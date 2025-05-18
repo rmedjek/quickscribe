@@ -1,103 +1,161 @@
-import Image from "next/image";
+// app/page.tsx
+"use client";
 
-export default function Home() {
+import React, { useEffect, useState, useRef, ChangeEvent } from 'react';
+import { FFmpeg } from '@ffmpeg/ffmpeg'; // Import the type for state
+import PageLayout from '@/components/PageLayout'; // Assuming you want the layout
+import { extractAudio, getFFmpegInstance } from './lib/ffmpeg-utils';
+// You might want a StyledButton here too if you're not using the default button
+// import StyledButton from '@/components/StyledButton'; 
+
+export default function HomePage() {
+  const [ffmpeg, setFfmpeg] = useState<FFmpeg | null>(null);
+  const [message, setMessage] = useState('Initializing FFmpeg...');
+  const [progress, setProgress] = useState(0); // For FFmpeg progress (0-1)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null); // To display selected file name
+  const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Load FFmpeg instance on component mount
+  useEffect(() => {
+    async function loadFFmpeg() {
+      setMessage('Loading FFmpeg, please wait...');
+      setProgress(0);
+      try {
+        const instance = await getFFmpegInstance(
+          (logMsg) => console.log('[FFMPEG CORE LOG]:', logMsg),
+          (progVal) => {
+            console.log('[FFMPEG CORE PROGRESS - Load Phase]:', progVal);
+            // Typically, load progress isn't granularly reported by ffmpeg.wasm's load()
+            // but if it were, you could use it here.
+            // For now, setProgress will be mainly used by the exec phase.
+          }
+        );
+        setFfmpeg(instance);
+        const loaded = typeof instance.isLoaded === 'function' ? instance.isLoaded() : true;
+        setMessage(loaded ? 'FFmpeg Loaded Successfully! Ready to process.' : 'FFmpeg instance obtained, load status uncertain.');
+      } catch (error) {
+        console.error("Page: Failed to load FFmpeg:", error);
+        setMessage(`Failed to load FFmpeg: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    loadFFmpeg();
+  }, []);
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      setSelectedFileName(files[0].name);
+      setAudioBlobUrl(null); // Reset previous audio
+      setMessage(`File selected: ${files[0].name}. Click process.`);
+    } else {
+      setSelectedFileName(null);
+      setMessage('No file selected. FFmpeg is ready.');
+    }
+  };
+
+  const handleFileProcess = async () => {
+    if (!ffmpeg || !fileInputRef.current?.files?.length) {
+      setMessage('Please select a file first, or FFmpeg not ready.');
+      return;
+    }
+    const fileToProcess = fileInputRef.current.files[0];
+    
+    setIsProcessing(true);
+    setProgress(0); 
+    setAudioBlobUrl(null); 
+    setMessage(`Processing ${fileToProcess.name}...`);
+
+    try {
+      const audioBlob = await extractAudio({
+        file: fileToProcess,
+        outputFormat: 'opus', // You can change this to 'mp3' if you prefer for testing
+        onLog: (logMsg) => console.log('[AUDIO EXTRACT LOG]:', logMsg),
+        onProgress: (progVal) => {
+          console.log('[AUDIO EXTRACT PROGRESS - from page]:', progVal);
+          setProgress(progVal); 
+          setMessage(`Extracting audio... ${Math.round(progVal * 100)}%`);
+        },
+      });
+      
+      setMessage(`Successfully extracted audio! Blob size: ${audioBlob.size}, type: ${audioBlob.type}`);
+      const url = URL.createObjectURL(audioBlob);
+      setAudioBlobUrl(url);
+      console.log('Audio Blob URL:', url);
+    } catch (error) {
+      setMessage(`Error extracting audio: ${error instanceof Error ? error.message : String(error)}`);
+      console.error("Error during audio extraction in page:", error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+    <PageLayout>
+      <div className="text-center p-6 sm:p-10 bg-white shadow-xl rounded-lg space-y-6 max-w-2xl mx-auto">
+        <h2 className="text-3xl font-semibold text-slate-700">
+          Test FFmpeg Audio Extraction
+        </h2>
+        <p className={`text-lg ${message.startsWith('Failed') || message.startsWith('Error') ? 'text-red-600' : 'text-slate-600'}`}>
+          {message}
+        </p>
+        
+        {ffmpeg && !isProcessing && (
+          <div className="my-4">
+            <label htmlFor="file-upload" className="mb-2 block text-sm font-medium text-slate-700">
+              Choose a video file:
+            </label>
+            <input 
+              id="file-upload"
+              type="file" 
+              accept="video/mp4,video/webm,video/quicktime,video/*" 
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className="block w-full text-sm text-slate-500
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-lg file:border-0
+                file:text-sm file:font-semibold
+                file:bg-sky-100 file:text-sky-700
+                hover:file:bg-sky-200 cursor-pointer border border-slate-300 rounded-lg p-1"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+            {selectedFileName && <p className="text-xs text-slate-500 mt-1">Selected: {selectedFileName}</p>}
+          </div>
+        )}
+
+        <button 
+          onClick={handleFileProcess} 
+          disabled={!ffmpeg || isProcessing || !fileInputRef.current?.files?.length}
+          className="w-full px-6 py-3 bg-sky-600 text-white font-semibold rounded-lg shadow-md hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:bg-slate-400 disabled:cursor-not-allowed transition-opacity"
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+          {isProcessing ? `Processing... ${Math.round(progress * 100)}%` : 'Process Video to Audio'}
+        </button>
+
+        {isProcessing && typeof progress === 'number' && (
+          <div className="w-full bg-slate-200 rounded-full h-3 mt-4 overflow-hidden">
+            <div
+              className="bg-sky-500 h-3 rounded-full transition-all duration-150 ease-linear"
+              style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }}
+            ></div>
+          </div>
+        )}
+
+        {audioBlobUrl && !isProcessing && (
+          <div className="mt-8 p-4 border border-green-200 bg-green-50 rounded-lg">
+            <h3 className="text-xl font-medium text-green-700 mb-3">Extracted Audio Ready!</h3>
+            <audio controls src={audioBlobUrl} className="w-full"></audio>
+            <p className="mt-3 text-center">
+              <a 
+                href={audioBlobUrl} 
+                download={`extracted_audio.opus`} // Default to opus or make dynamic based on outputFormat
+                className="inline-block px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700"
+              >
+                Download Extracted Audio (.opus)
+              </a>
+            </p>
+          </div>
+        )}
+      </div>
+    </PageLayout>
   );
 }
