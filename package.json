@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "apt-get update && apt-get install -y ffmpeg && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp && next build",
     "start": "next start",
     "lint": "next lint"
   },
@@ -12,16 +13,22 @@
     "@ffmpeg/core": "^0.12.6",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
+    "ai": "^4.3.16",
     "clsx": "^2.1.1",
+    "groq-sdk": "^0.22.0",
     "lucide-react": "^0.511.0",
     "next": "15.3.2",
+    "node-fetch-commonjs": "^3.3.2",
+    "play-dl": "^1.9.7",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "undici": "^7.9.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/node-fetch": "^2.6.12",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

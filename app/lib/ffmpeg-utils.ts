@@ -41,7 +41,7 @@ export async function getFFmpegInstance(
         // NO workerURL should be specified here as the file doesn't exist
         // and the library (for this version/build) should handle worker creation internally.
     });
-    console.log('FFmpeg core (from /public, ESM, no explicit workerURL) loaded successfully.');
+    console.log('FFmpeg UMD core (from /public, no explicit workerURL) loaded successfully.');
     ffmpegInstance = instance;
   } catch (error) {
     console.error('Error loading FFmpeg core (from /public, ESM, no explicit workerURL):', error);

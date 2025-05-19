@@ -20,8 +20,10 @@
       }
     ],
     "paths": {
-      "@/components/*": ["app/components/*"], // Or just "components/*" if you create components folder in root
-      "@/*": ["./*"] // General alias for root
+      "@/components/*": ["app/components/*"],
+      "@/lib/*": ["app/lib/*"],
+      "@/actions/*": ["app/actions/*"],
+      "@/*": ["./*"]
     }
   },
   "include": [
