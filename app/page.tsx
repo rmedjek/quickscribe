@@ -6,53 +6,61 @@ import PageLayout from '@/components/PageLayout';
 import InputSelectionView from '@/components/InputSelectionView';
 import ConfirmationView from '@/components/ConfirmationView';
 import ProcessingView from '@/components/ProcessingView';
-import StyledButton from '@/components/StyledButton'; // For the error view
+import StyledButton from '@/components/StyledButton';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { DetailedTranscriptionResult, transcribeAudioAction } from './actions/transcribeAudioAction';
 import { extractAudio, getFFmpegInstance } from './lib/ffmpeg-utils';
 import ResultsView from './components/ResultsView';
-import { processVideoLinkAction } from '@/actions/processVideoLinkAction'; // Import the new action
-
+import { processVideoLinkAction } from '@/actions/processVideoLinkAction';
+import { processLargeVideoFileAction } from './actions/processLargeVideoFileAction';
 
 enum ViewState {
   SelectingInput,
   ConfirmingInput,
   ProcessingClient,
-  // ProcessingServer, // For Path B later
+  ProcessingServer, // Unified state for server-side processing
   ShowingResults,
   Error,
 }
 
-// For progress tracking
 interface ProcessingStage {
   name: string;
-  weight: number; // How much this stage contributes to overall progress (0-1)
-  currentProgress: number; // Progress within this stage (0-1)
-  isIndeterminate?: boolean; // Add this
+  weight: number;
+  currentProgress: number;
 }
+
+// Adjusted estimated durations for the *entire server action*
+const ESTIMATED_SERVER_LINK_ACTION_TOTAL_MS = 75000; // e.g., 75s for link processing (yt-dlp + ffmpeg + groq)
+const ESTIMATED_SERVER_FILE_ACTION_TOTAL_MS = 90000; // e.g., 90s for large file (upload + ffmpeg + groq)
+// For client-side path's Groq call simulation
+const SIMULATED_CLIENT_TRANSCRIPTION_DURATION_MS = 20000; 
+const PROGRESS_INTERVAL_MS = 250;
 
 export default function HomePage() {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.SelectingInput);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [submittedLink, setSubmittedLink] = useState<string | null>(null); // For future link processing
+  const [submittedLink, setSubmittedLink] = useState<string | null>(null);
   const [ffmpeg, setFfmpeg] = useState<FFmpeg | null>(null);
-  const [statusMessages, setStatusMessages] = useState<string[]>([]);
+  // statusMessages can be removed if not used for a detailed log list
+  // const [, setStatusMessages] = useState<string[]>([]); 
   const [currentStageMessage, setCurrentStageMessage] = useState<string>('');
-  const [processingStages, setProcessingStages] = useState<ProcessingStage[]>([]);
+  const [, setProcessingStages] = useState<ProcessingStage[]>([]);
   const [overallProgress, setOverallProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isIndeterminateProgress, setIsIndeterminateProgress] = useState(false);
   const [transcriptionData, setTranscriptionData] = useState<DetailedTranscriptionResult | null>(null);
-  const transcriptionProgressIntervalRef = useRef<NodeJS.Timeout | null>(null); 
+  
+  const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const conceptualMessageTimeout1Ref = useRef<NodeJS.Timeout | null>(null);
+  const conceptualMessageTimeout2Ref = useRef<NodeJS.Timeout | null>(null);
 
-  // Load FFmpeg on initial mount
+
   useEffect(() => {
-    async function loadFFmpeg() {
+    async function loadFFmpeg() { /* ... same as before ... */ 
       try {
         console.log("MainPage: Initializing FFmpeg...");
         const instance = await getFFmpegInstance(
           (logMsg) => console.log('[FFMPEG CORE LOG - MainPage]:', logMsg),
-          // Core load progress isn't usually granular, so not setting progress here
         );
         setFfmpeg(instance);
         console.log("MainPage: FFmpeg instance ready.");
@@ -64,67 +72,59 @@ export default function HomePage() {
     }
     loadFFmpeg();
   }, []);
-
-  // Cleanup interval on component unmount or when processing ends/is reset
-  useEffect(() => {
+  
+  useEffect(() => { // Universal cleanup for all intervals/timeouts
     return () => {
-      if (transcriptionProgressIntervalRef.current) {
-        clearInterval(transcriptionProgressIntervalRef.current);
-      }
+      if (simulationIntervalRef.current) clearInterval(simulationIntervalRef.current);
+      if (conceptualMessageTimeout1Ref.current) clearTimeout(conceptualMessageTimeout1Ref.current);
+      if (conceptualMessageTimeout2Ref.current) clearTimeout(conceptualMessageTimeout2Ref.current);
     };
   }, []);
 
-// app/page.tsx
-const handleServerSideProcessing = async (link: string) => {
-  setCurrentView(ViewState.ProcessingClient); // Or ViewState.ProcessingServer if distinct UI
-  const initialStages: ProcessingStage[] = [ // Simpler stages for server path
-    { name: 'ServerProcessing', weight: 0.5, currentProgress: 0, isIndeterminate: true },
-    { name: 'Transcription', weight: 0.5, currentProgress: 0, isIndeterminate: true },
-  ];
-  setProcessingStages(initialStages);
-  setOverallProgress(0);
-  setIsIndeterminateProgress(true); 
-  setCurrentStageMessage('Server is processing video link...');
-  updateStageProgress('ServerProcessing', 0.1); // Initial conceptual progress
-
-  try {
-    const response = await processVideoLinkAction(link); // This is the yt-dlp version
-
-    // Once response comes back, we assume server processing and transcription are done
-    // or have moved to their final states based on response.
-    updateStageProgress('ServerProcessing', 1); 
-    
-    if (response.success && response.data) {
-      setTranscriptionData(response.data);
-      setCurrentStageMessage('Transcription complete!');
-      updateStageProgress('Transcription', 1); // This makes overallProgress 100%
-      setIsIndeterminateProgress(false);
-      setCurrentView(ViewState.ShowingResults);
-    } else {
-      throw new Error(response.error || "Server-side processing failed with no specific error message.");
+  const clearAllTimers = () => {
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+      simulationIntervalRef.current = null;
     }
+    if (conceptualMessageTimeout1Ref.current) {
+      clearTimeout(conceptualMessageTimeout1Ref.current);
+      conceptualMessageTimeout1Ref.current = null;
+    }
+    if (conceptualMessageTimeout2Ref.current) {
+      clearTimeout(conceptualMessageTimeout2Ref.current);
+      conceptualMessageTimeout2Ref.current = null;
+    }
+  };
 
-  } catch (error) {
-    setIsIndeterminateProgress(false);
-    console.error('MainPage: Server-side processing pipeline error:', error);
-    setErrorMessage(`Processing Error: ${error instanceof Error ? error.message : String(error)}`);
-    setCurrentView(ViewState.Error);
-  }
-};
+  const runSimulatedOverallProgress = (
+    stageNameForWeight: string, // The single stage whose weight is 1.0 for this simulation
+    estimatedTotalDurationMs: number,
+  ) => {
+    clearAllTimers(); // Clear any previous simulation
+    let currentStep = 0;
+    const totalSteps = estimatedTotalDurationMs / PROGRESS_INTERVAL_MS;
+    
+    // Ensure the stage exists with progress 0.01 to kickstart overallProgress calc
+    updateStageProgress(stageNameForWeight, 0.01); 
+
+    simulationIntervalRef.current = setInterval(() => {
+      currentStep++;
+      const maxSimProgress = Math.min(0.98, (totalSteps - 1) / totalSteps); 
+      const simulatedProgress = Math.min(maxSimProgress, currentStep / totalSteps);
+      updateStageProgress(stageNameForWeight, simulatedProgress);
+
+      if (currentStep >= totalSteps) { // Simulation time elapsed
+        clearAllTimers();
+        // Actual completion will set progress to 1.0
+      }
+    }, PROGRESS_INTERVAL_MS);
+  };
 
   const resetToStart = useCallback(() => {
-    if (transcriptionProgressIntervalRef.current) { // Clear interval on reset
-      clearInterval(transcriptionProgressIntervalRef.current);
-      transcriptionProgressIntervalRef.current = null;
-    }
-    setSelectedFile(null);
-    setSubmittedLink(null);
-    setStatusMessages([]);
-    setCurrentStageMessage('');
-    setProcessingStages([]);
-    setOverallProgress(0);
-    setErrorMessage(null);
-    setTranscriptionData(null);
+    clearAllTimers();
+    setSelectedFile(null); setSubmittedLink(null); /* setStatusMessages([]); */ 
+    setCurrentStageMessage(''); setProcessingStages([]); setOverallProgress(0);
+    setErrorMessage(null); setTranscriptionData(null); setIsIndeterminateProgress(false);
     setCurrentView(ViewState.SelectingInput);
   }, []);
 
@@ -138,175 +138,181 @@ const handleServerSideProcessing = async (link: string) => {
             calculatedOverallProgress += newStage.weight * newStage.currentProgress;
             return newStage;
         });
-        
-        console.log(`[updateStageProgress] Stage: ${stageName}, StageProgress: ${stageProgressVal.toFixed(2)}, New OverallProgress: ${calculatedOverallProgress.toFixed(2)}`);
         setOverallProgress(calculatedOverallProgress);
         return updatedStages;
     });
   }, []);
 
   const handleClientSideProcessing = async (fileToProcess: File) => {
-    if (!ffmpeg) {
-      setErrorMessage("FFmpeg is not loaded. Cannot process.");
-      setCurrentView(ViewState.Error);
-      return;
-    }
-    
-    console.log("Starting handleClientSideProcessing");
+    if (!ffmpeg) { /* ... error ... */ return; }
     setCurrentView(ViewState.ProcessingClient);
-    const initialStages: ProcessingStage[] = [
-      { name: 'AudioExtraction', weight: 0.5, currentProgress: 0, isIndeterminate: false },
-      { name: 'Transcription', weight: 0.5, currentProgress: 0, isIndeterminate: true }, // Mark as indeterminate
+    const stages: ProcessingStage[] = [
+      { name: 'AudioExtraction', weight: 0.5, currentProgress: 0 },
+      { name: 'TranscriptionClient', weight: 0.5, currentProgress: 0 }, // Unique name for this stage
     ];
-    setProcessingStages(initialStages);
+    setProcessingStages(stages);
     setOverallProgress(0);
-    setIsIndeterminateProgress(false); // Initial state for FFmpeg
-    console.log("Set isIndeterminateProgress to false for FFmpeg");
+    setIsIndeterminateProgress(false); 
     setCurrentStageMessage('Preparing for audio extraction...');
 
     try {
-      // Stage 1: Audio Extraction
       setCurrentStageMessage('Extracting audio from video...');
-      updateStageProgress('AudioExtraction', 0.01); 
-
+      updateStageProgress('AudioExtraction', 0.01);
       const audioBlob = await extractAudio({
-          file: fileToProcess, outputFormat: 'opus',
-          onLog: () => { /* ... */ },
-          onProgress: (progVal) => {
-              if (isIndeterminateProgress) setIsIndeterminateProgress(false); // Should be false here
-              updateStageProgress('AudioExtraction', progVal);
-              setCurrentStageMessage(`Extracting audio... ${Math.round(progVal * 100)}%`);
-          },
+        file: fileToProcess, outputFormat: 'opus',
+        onLog: (logMsg) => console.log('[FFMPEG_CLIENT_LOG]', logMsg),
+        onProgress: (progVal) => {
+          updateStageProgress('AudioExtraction', progVal);
+          setCurrentStageMessage(`Extracting audio... ${Math.round(progVal * 100)}%`);
+        },
       });
-      updateStageProgress('AudioExtraction', 1); 
-      setCurrentStageMessage('Audio extracted! Preparing for transcription...');
-      console.log("FFmpeg extraction complete. Current overallProgress:", overallProgress); // Use a ref for latest value if needed
-
-      // Stage 2: Transcription
-      console.log("Setting isIndeterminateProgress to true for Transcription");
+      updateStageProgress('AudioExtraction', 1);
+      setCurrentStageMessage('Audio extracted! Sending to AI...');
+      
       setIsIndeterminateProgress(true); 
-      setCurrentStageMessage('AI Transcribing... (this may take a few moments)');
-      updateStageProgress('Transcription', 0.01); // Initial progress for transcription stage
-
-      // Clear any existing interval just in case (belt and braces)
-      if (transcriptionProgressIntervalRef.current) {
-        clearInterval(transcriptionProgressIntervalRef.current);
-      }
-
-      // Simulate progress for transcription
-      let transcriptionSimulatedProgress = 0;
-      const SIMULATED_TRANSCRIPTION_DURATION_MS = 20000; // Estimate 30 seconds (adjust!)
-      const PROGRESS_INTERVAL_MS = 250; // Update every 0.5 seconds
-      const totalSteps = SIMULATED_TRANSCRIPTION_DURATION_MS / PROGRESS_INTERVAL_MS;
-      let currentStep = 0;
-
-      // Assign the interval ID to the ref
-      transcriptionProgressIntervalRef.current = setInterval(() => {
-        currentStep++;
-        const maxSimulatedProgressForStage = Math.min(0.98, (totalSteps - 1) / totalSteps); 
-        transcriptionSimulatedProgress = Math.min(maxSimulatedProgressForStage, currentStep / totalSteps);
-        updateStageProgress('Transcription', transcriptionSimulatedProgress);
-        // No setCurrentStageMessage needed here if it's already "AI Transcribing..."
-    }, PROGRESS_INTERVAL_MS);
-    
+      setCurrentStageMessage('AI Transcribing (client path)...');
+      runSimulatedOverallProgress('TranscriptionClient', SIMULATED_CLIENT_TRANSCRIPTION_DURATION_MS);
+      
       const formData = new FormData();
-      formData.append("audioBlob", audioBlob, `audio.${audioBlob.type.split('/')[1] || 'opus'}`); 
-      console.log("Calling transcribeAudioAction...");
+      formData.append("audioBlob", audioBlob, `audio.${audioBlob.type.split('/')[1] || 'opus'}`);
       const response = await transcribeAudioAction(formData);
-      console.log("transcribeAudioAction returned. Clearing interval.");
       
-      if (transcriptionProgressIntervalRef.current) {
-          clearInterval(transcriptionProgressIntervalRef.current);
-          transcriptionProgressIntervalRef.current = null;
-      }
-      console.log("Setting isIndeterminateProgress to false (Transcription complete or failed)");
-      setIsIndeterminateProgress(false); 
-      updateStageProgress('Transcription', 1); 
-      
+      clearAllTimers();
+      setIsIndeterminateProgress(false);
+      updateStageProgress('TranscriptionClient', 1);
+
       if (response.success && response.data) {
         setTranscriptionData(response.data);
         setCurrentStageMessage('Transcription complete!');
         setCurrentView(ViewState.ShowingResults);
-      } else {
-        throw new Error(response.error || "Transcription failed with no specific error message.");
-      }
-    } catch (error) {
-      if (transcriptionProgressIntervalRef.current) {
-        clearInterval(transcriptionProgressIntervalRef.current);
-        transcriptionProgressIntervalRef.current = null;
-      }
-      console.error('MainPage: Client-side processing pipeline error:', error);
-      setIsIndeterminateProgress(false);
-      setErrorMessage(`Processing Error: ${error instanceof Error ? error.message : String(error)}`);
-      setCurrentView(ViewState.Error);
+      } else { throw new Error(response.error || "Client-side transcription pipeline failed."); }
+    } catch (error) { 
+        clearAllTimers();
+        setIsIndeterminateProgress(false);
+        console.error('MainPage: Client-side processing error:', error);
+        setErrorMessage(`Processing Error: ${error instanceof Error ? error.message : String(error)}`);
+        setCurrentView(ViewState.Error);
     }
   };
 
-  // To get the most up-to-date overallProgress for logging inside async functions
-  // if direct state access is stale due to closures:
-  const overallProgressRef = useRef(overallProgress);
-  useEffect(() => {
-    overallProgressRef.current = overallProgress;
-  }, [overallProgress]);
+  const handleServerSideLinkProcessing = async (link: string) => {
+    setCurrentView(ViewState.ProcessingServer);
+    const stages: ProcessingStage[] = [
+      { name: 'ServerLinkProcess', weight: 1.0, currentProgress: 0 },
+    ];
+    setProcessingStages(stages);
+    setOverallProgress(0);
+    setIsIndeterminateProgress(true); 
+    setCurrentStageMessage('Server: Requesting video link processing...');
+    
+    runSimulatedOverallProgress('ServerLinkProcess', ESTIMATED_SERVER_LINK_ACTION_TOTAL_MS);
 
-  // --- Handlers to transition between views ---
-  const handleFileSelected = (file: File) => {
-    setSelectedFile(file);
-    setSubmittedLink(null);
-    setCurrentView(ViewState.ConfirmingInput);
+    // Conceptual message updates
+    conceptualMessageTimeout1Ref.current = setTimeout(() => setCurrentStageMessage('Server: Downloading & preparing audio...'), ESTIMATED_SERVER_LINK_ACTION_TOTAL_MS * 0.1);
+    conceptualMessageTimeout2Ref.current = setTimeout(() => setCurrentStageMessage('Server: AI Transcribing...'), ESTIMATED_SERVER_LINK_ACTION_TOTAL_MS * 0.5);
+
+    try {
+      const response = await processVideoLinkAction(link); 
+      clearAllTimers();
+      
+      if (response.success && response.data) {
+        setTranscriptionData(response.data);
+        setCurrentStageMessage('Transcription complete!');
+        updateStageProgress('ServerLinkProcess', 1); 
+        setIsIndeterminateProgress(false);
+        setCurrentView(ViewState.ShowingResults);
+      } else {
+        throw new Error(response.error || "Server-side link processing failed.");
+      }
+    } catch (error) { 
+        clearAllTimers();
+        setIsIndeterminateProgress(false);
+        console.error('MainPage: Server-side link processing error:', error);
+        setErrorMessage(`Processing Error: ${error instanceof Error ? error.message : String(error)}`);
+        setCurrentView(ViewState.Error);
+    }
   };
 
-  const handleLinkSubmitted = (link: string) => {
-    // For now, link submission will also go to confirmation, but Path B logic is TBD
-    setSubmittedLink(link);
-    setSelectedFile(null);
-    setCurrentView(ViewState.ConfirmingInput);
-    // Later, this might directly trigger a server-side processing path
+  const handleServerSideFileUploadProcessing = async (fileToProcess: File) => {
+    setCurrentView(ViewState.ProcessingServer);
+    const stages: ProcessingStage[] = [
+      { name: 'ServerFileProcess', weight: 1.0, currentProgress: 0 },
+    ];
+    setProcessingStages(stages);
+    setOverallProgress(0);
+    setIsIndeterminateProgress(true); 
+    setCurrentStageMessage('Server: Uploading and processing file...');
+    
+    runSimulatedOverallProgress('ServerFileProcess', ESTIMATED_SERVER_FILE_ACTION_TOTAL_MS);
+
+    conceptualMessageTimeout1Ref.current = setTimeout(() => setCurrentStageMessage('Server: Extracting audio from uploaded file...'), ESTIMATED_SERVER_FILE_ACTION_TOTAL_MS * 0.2);
+    conceptualMessageTimeout2Ref.current = setTimeout(() => setCurrentStageMessage('Server: AI Transcribing...'), ESTIMATED_SERVER_FILE_ACTION_TOTAL_MS * 0.6);
+
+    try {
+      const formData = new FormData();
+      formData.append("videoFile", fileToProcess);
+      const response = await processLargeVideoFileAction(formData);
+      clearAllTimers();
+
+      if (response.success && response.data) {
+        setTranscriptionData(response.data);
+        setCurrentStageMessage('Transcription complete!');
+        updateStageProgress('ServerFileProcess', 1);
+        setIsIndeterminateProgress(false);
+        setCurrentView(ViewState.ShowingResults);
+      } else {
+        throw new Error(response.error || "Server-side file processing failed.");
+      }
+    } catch (error) { 
+        clearAllTimers();
+        setIsIndeterminateProgress(false);
+        console.error('MainPage: Server-side file upload processing error:', error);
+        setErrorMessage(`Processing Error: ${error instanceof Error ? error.message : String(error)}`);
+        setCurrentView(ViewState.Error);
+    }
   };
 
-  const handleConfirmation = (chosenPath: 'client' | 'server') => {
+  const handleFileSelected = (file: File) => { /* ... same as before ... */ 
+    setSelectedFile(file); setSubmittedLink(null); setCurrentView(ViewState.ConfirmingInput);
+  };
+  const handleLinkSubmitted = (link: string) => { /* ... same as before ... */ 
+    setSubmittedLink(link); setSelectedFile(null); setCurrentView(ViewState.ConfirmingInput);
+  };
+  const handleConfirmation = (chosenPath: 'client' | 'server') => { /* ... same as before, calling new handlers ... */ 
+    if (!ffmpeg && chosenPath === 'client' && selectedFile) {
+        setErrorMessage("FFmpeg is not ready. Please wait or refresh.");
+        setCurrentView(ViewState.Error); return;
+    }
     if (chosenPath === 'client') {
-      if (selectedFile) {
-        handleClientSideProcessing(selectedFile);
-      } else if (submittedLink) {
-        // Defaulting links to server-side processing
-        console.log("Link submitted, initiating server-side processing for:", submittedLink);
-        handleServerSideProcessing(submittedLink);
+      if (selectedFile) { handleClientSideProcessing(selectedFile); } 
+      else if (submittedLink) { 
+        setErrorMessage("Client-side processing of video links is not supported.");
+        setCurrentView(ViewState.Error);
       }
     } else if (chosenPath === 'server') {
-      if (selectedFile) { // Large file upload to server (Path B for files)
-        setErrorMessage("Server-side processing for direct file uploads is not yet implemented.");
-        setCurrentView(ViewState.Error);
-      } else if (submittedLink) { // Link processing
-        handleServerSideProcessing(submittedLink);
-      }
+      if (selectedFile) { handleServerSideFileUploadProcessing(selectedFile); } 
+      else if (submittedLink) { handleServerSideLinkProcessing(submittedLink); }
+      else { setErrorMessage("No input provided for server processing."); setCurrentView(ViewState.Error); }
     }
   };
+  const handleCancelConfirmation = () => { resetToStart(); };
+  
+  const ViewStateRendererError = () => ( /* ... same as before ... */ 
+    <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl max-w-lg mx-auto text-center">
+      <h2 className="text-xl font-semibold text-red-600 mb-4">An Error Occurred</h2>
+      <p className="text-slate-700 mb-6">{errorMessage || "An unspecified error occurred."}</p>
+      <StyledButton onClick={resetToStart} variant="secondary"> Start Over </StyledButton>
+    </div>
+  );
 
-  const handleCancelConfirmation = () => {
-    resetToStart();
-  };
-
-  // --- Render logic for different views ---
-  const renderCurrentView = () => {
+  const renderCurrentView = () => { /* ... same as before with corrected ProcessingServer case ... */ 
     switch (currentView) {
       case ViewState.SelectingInput:
-        return (
-          <InputSelectionView
-            onFileSelected={handleFileSelected}
-            onLinkSubmitted={handleLinkSubmitted}
-          />
-        );
+        return <InputSelectionView onFileSelected={handleFileSelected} onLinkSubmitted={handleLinkSubmitted} />;
       case ViewState.ConfirmingInput:
-        return (
-          <ConfirmationView
-            file={selectedFile}
-            link={submittedLink}
-            onConfirm={handleConfirmation}
-            onCancel={handleCancelConfirmation}
-          />
-        );
+        return <ConfirmationView file={selectedFile} link={submittedLink} onConfirm={handleConfirmation} onCancel={handleCancelConfirmation} />;
       case ViewState.ProcessingClient:
+      case ViewState.ProcessingServer: 
         return (
           <ProcessingView
             currentStageMessage={currentStageMessage}
@@ -315,37 +321,19 @@ const handleServerSideProcessing = async (link: string) => {
           />
         );
       case ViewState.ShowingResults:
-        if (transcriptionData) { // transcriptionData is DetailedTranscriptionResult | null
-          return (
-            <ResultsView 
-              transcriptionData={transcriptionData} 
-              onRestart={resetToStart} 
-            />
-          );
+        if (transcriptionData) {
+          return <ResultsView transcriptionData={transcriptionData} onRestart={resetToStart} />;
         }
-        // Fallback if transcriptionData is somehow null
-        setErrorMessage("Transcription data is missing when trying to show results.");
-        setCurrentView(ViewState.Error); // Transition to error state
-        return null; // Or <ViewStateRendererError />;
-
-    case ViewState.Error:
-      return <ViewStateRendererError />;
-      
-    default:
-      return <p>Unknown application state.</p>;
+        setErrorMessage("Results data is missing."); 
+        setCurrentView(ViewState.Error); 
+        return null; 
+      case ViewState.Error:
+        return <ViewStateRendererError />;
+      default:
+        console.error(">>> HITTING DEFAULT CASE in renderCurrentView. currentView is:", currentView, "String name:", ViewState[currentView]);
+        return <p>Unknown application state. (currentView value: {String(currentView)})</p>;
     }
   };
-
-  // Helper for error display
-  const ViewStateRendererError = () => (
-    <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl max-w-lg mx-auto text-center">
-      <h2 className="text-xl font-semibold text-red-600 mb-4">An Error Occurred</h2>
-      <p className="text-slate-700 mb-6">{errorMessage || "An unspecified error occurred."}</p>
-      <StyledButton onClick={resetToStart} variant="secondary">
-        Try Again From Start
-      </StyledButton>
-    </div>
-  );
 
   return <PageLayout>{renderCurrentView()}</PageLayout>;
 }
