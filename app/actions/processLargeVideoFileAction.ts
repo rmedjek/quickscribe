@@ -11,6 +11,7 @@ import { promisify } from 'node:util';
 
 // Import the existing action for transcription
 import { transcribeAudioAction, DetailedTranscriptionResult } from './transcribeAudioAction'; 
+import { TranscriptionMode } from '@/components/ConfirmationView';
 
 const execAsync = promisify(exec);
 
@@ -19,9 +20,10 @@ function sanitizeFilename(name: string): string {
 }
 
 export async function processLargeVideoFileAction(
-  formData: FormData // Expects FormData with the video file
+  formData: FormData, // Expects FormData with the video file
+  mode: TranscriptionMode // Add mode parameter
 ): Promise<{ success: boolean; data?: DetailedTranscriptionResult; error?: string }> {
-  console.log(`[LargeFileAction] Processing uploaded video file...`);
+  console.log(`[LargeFileAction] Processing uploaded video file with mode: ${mode}`);
   let tempVideoPath: string | null = null;
   let tempAudioPath: string | null = null;
   const uniqueId = Date.now();
@@ -91,8 +93,8 @@ export async function processLargeVideoFileAction(
     formDataForGroq.append("audioBlob", audioBlobForGroq, audioFileName); 
 
     // --- 4. Call the transcription action ---
-    console.log("[LargeFileAction] Calling transcribeAudioAction with server-extracted audio...");
-    return await transcribeAudioAction(formDataForGroq);
+    console.log("[LargeFileAction] Calling transcribeAudioAction with server-extracted audio and mode:", mode);
+    return await transcribeAudioAction(formDataForGroq, mode);
 
   } catch (error: any) {
     console.error("[LargeFileAction] Error in processing pipeline:", error);

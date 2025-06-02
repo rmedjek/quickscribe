@@ -1,11 +1,12 @@
 // next.config.ts
-import type { NextConfig } from "next";
+import type { NextConfig, SizeLimit } from "next";
+const serverActionBodyLimit = process.env.SERVER_ACTION_BODY_LIMIT_CONFIG || '50mb'; // Default to 50MB
 
 const nextConfig: NextConfig = {
   /* other config options you might have */
   experimental: {
     serverActions: {
-      bodySizeLimit: 500 * 1024 * 1024, // 500MB in bytes
+      bodySizeLimit: serverActionBodyLimit as SizeLimit,
     },
   },
 };

@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/actions/processVideoLinkAction.ts
 "use server";
 
 import * as fsPromises from 'node:fs/promises';
@@ -9,9 +8,13 @@ import os from 'node:os';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import fetch from 'node-fetch-commonjs'; 
-import play from 'play-dl';       
-
+// We don't strictly need play.validate if we're defaulting to yt-dlp for non-direct links,
+// but it can be a quick check for explicit YouTube URLs if desired.
+// import play from 'play-dl'; 
 import { transcribeAudioAction, DetailedTranscriptionResult } from './transcribeAudioAction'; 
+import { TranscriptionMode } from '@/components/ConfirmationView';
+
+const GROQ_AUDIO_LIMIT_BYTES = 25 * 1024 * 1024; // 25MB
 
 const execAsync = promisify(exec);
 
@@ -20,139 +23,131 @@ function sanitizeFilename(name: string): string {
 }
 
 export async function processVideoLinkAction(
-  videoUrl: string
+  videoUrl: string,
+  mode: TranscriptionMode // Add mode parameter
 ): Promise<{ success: boolean; data?: DetailedTranscriptionResult; error?: string }> {
-  console.log(`[VideoLinkAction - YTDLP AudioOnly] Processing URL: ${videoUrl}`);
-  let tempDownloadedFilePath: string | null = null; // This will now store the path to the downloaded audio
-  let tempOpusAudioPath: string | null = null;    // This will be the path for the final Opus audio
+  console.log(`[VideoLinkAction] Processing URL: ${videoUrl} with mode: ${mode}`);
+  let tempDownloadedFilePath: string | null = null;
+  let tempOpusAudioPath: string | null = null;
   const uniqueId = Date.now();
 
   try {
-    console.log("[VideoLinkAction - YTDLP AudioOnly] Preparing to download audio from video link...");
+    console.log("[VideoLinkAction] Preparing to download video/audio content...");
     
-    const downloadedFileNameBase = `temp_downloaded_audio_${uniqueId}`;
-    // yt-dlp with 'bestaudio' often defaults to .m4a or .webm (audio).
-    // We'll let FFmpeg handle the input format regardless.
-    let downloadedFileExtension = 'm4a'; // A common audio extension yt-dlp might use
-    
-    const validationResult = await play.validate(videoUrl);
-    console.log(`[VideoLinkAction - YTDLP AudioOnly] play.validate result for ${videoUrl}: ${validationResult}`);
+    const downloadedFileNameBase = `temp_downloaded_content_${uniqueId}`;
+    let downloadedFileExtension = 'mp4'; // Default, will be input to FFmpeg
 
-    if (validationResult === 'yt_video' || videoUrl.includes("youtube.com") || videoUrl.includes("youtu.be")) {
-      console.log("[VideoLinkAction - YTDLP AudioOnly] YouTube URL detected. Downloading audio with yt-dlp CLI...");
+    let isDirectKnownVideoFileLink = false;
+    try {
+        const parsedUrl = new URL(videoUrl);
+        // Regex to check for common video file extensions at the end of the pathname
+        if (/\.(mp4|mov|webm|avi|mkv|flv|mpeg|mpg|wmv|m4a|aac|ogg|wav|flac|opus)$/i.test(parsedUrl.pathname)) {
+            isDirectKnownVideoFileLink = true;
+            const extFromPath = parsedUrl.pathname.split('.').pop()?.toLowerCase();
+            if (extFromPath) downloadedFileExtension = extFromPath;
+        }
+    } catch (e) {
+        console.warn("[VideoLinkAction] URL parsing failed, will attempt download with yt-dlp:", e);
+        // If URL is malformed, yt-dlp will likely fail, which is desired.
+    }
+
+    tempDownloadedFilePath = path.join(os.tmpdir(), `${downloadedFileNameBase}.${downloadedFileExtension}`);
+
+    if (isDirectKnownVideoFileLink) {
+      console.log(`[VideoLinkAction] Detected direct file link: ${videoUrl}. Attempting download with fetch...`);
+      const response = await fetch(videoUrl);
+      if (!response.ok || !response.body) {
+        throw new Error(`Failed to download from direct link: ${response.status} ${response.statusText} for URL: ${videoUrl}`);
+      }
+      const fileStream = fsCore.createWriteStream(tempDownloadedFilePath);
+      await new Promise<void>((resolve, reject) => {
+          response.body!.pipe(fileStream);
+          response.body!.on("error", (err) => { console.error("[VideoLinkAction] Direct link response body stream error:", err); reject(err); });
+          fileStream.on("finish", () => { console.log("[VideoLinkAction] Direct link stream piped to file successfully."); resolve(); });
+          fileStream.on("error", (err) => { console.error("[VideoLinkAction] Direct link fileStream error:", err); reject(err); });
+      });
+    } else {
+      // For YouTube, Vimeo, Dailymotion, and MANY other sites, or if unsure, try yt-dlp
+      console.log(`[VideoLinkAction] URL (${videoUrl}) is not a clear direct file link or failed parsing. Attempting download with yt-dlp CLI...`);
       
-      tempDownloadedFilePath = path.join(os.tmpdir(), `${downloadedFileNameBase}.${downloadedFileExtension}`);
-
-      // yt-dlp command for best audio:
-      // -f bestaudio: Selects the best quality audio-only stream.
-      // --extract-audio or -x: (Often used with bestaudio) Tells yt-dlp to ensure the output is an audio file.
-      // --audio-format mp3/m4a/opus/etc.: If you want yt-dlp itself to convert. 
-      //     However, since we use FFmpeg later for Opus, just getting bestaudio is fine.
-      // -o "${tempDownloadedFilePath}" : Output to this specific filepath.
-      // --force-overwrites : Overwrite if file exists.
-      // --no-playlist : Only download the single video's audio if URL is part of a playlist.
-      // Let's try a simpler format selection for best audio and specify an output template that sets extension.
-      // Using `%(ext)s` in output template lets yt-dlp set the correct extension.
-      // We'll need to find the actual filename after download if we use %(ext)s.
-
-      // For simplicity in finding the file, let's specify a common audio output for yt-dlp if it needs to convert.
-      // Or, let it download whatever 'bestaudio' is and let our FFmpeg handle it.
-      // The command below aims to download the best audio and let FFmpeg figure out the input.
-      // yt-dlp will name the file based on the -o template. If `%(ext)s` is used, we need to find the file.
-      // Let's fix the output name for predictability.
-      // -x is shortcut for --extract-audio. --audio-format best tells it to keep best audio format.
-
-      // To ensure we get a known extension for FFmpeg and avoid complex filename discovery,
-      // let's tell yt-dlp to output as m4a (a common, good quality audio format FFmpeg handles well).
-      downloadedFileExtension = 'm4a'; // We'll ask yt-dlp for this
-      tempDownloadedFilePath = path.join(os.tmpdir(), `${downloadedFileNameBase}.${downloadedFileExtension}`);
-      const finalYtDlpCommand = `yt-dlp --quiet --progress --force-overwrites -x --audio-format m4a -o "${tempDownloadedFilePath}" --no-playlist "${videoUrl}"`;
-
-
-      console.log(`[VideoLinkAction - YTDLP AudioOnly] Executing yt-dlp: ${finalYtDlpCommand}`);
+      // yt-dlp command to download best audio and output as m4a (which FFmpeg handles well)
+      // -x or --extract-audio: Extract audio track.
+      // --audio-format m4a: Convert audio to m4a.
+      // -o: Output template. We specify the full path.
+      const ytDlpOutputExtension = 'm4a'; // Ask yt-dlp to give us M4A
+      tempDownloadedFilePath = path.join(os.tmpdir(), `${downloadedFileNameBase}.${ytDlpOutputExtension}`);
+      const ytDlpCommand = `yt-dlp --quiet --progress --force-overwrites -x --audio-format ${ytDlpOutputExtension} -o "${tempDownloadedFilePath}" --no-playlist "${videoUrl}"`;
+      
+      console.log(`[VideoLinkAction] Executing yt-dlp: ${ytDlpCommand}`);
       try {
-        const { stdout: ytStdout, stderr: ytStderr } = await execAsync(finalYtDlpCommand, { timeout: 300000 }); // 5 min timeout
+        const { stdout: ytStdout, stderr: ytStderr } = await execAsync(ytDlpCommand, { timeout: 300000 }); // 5 min timeout
         
-        if (ytStdout) console.log(`[VideoLinkAction - YTDLP AudioOnly] yt-dlp stdout: ${ytStdout}`);
-        if (ytStderr) console.log(`[VideoLinkAction - YTDLP AudioOnly] yt-dlp stderr: ${ytStderr}`);
+        if (ytStdout) console.log(`[VideoLinkAction] yt-dlp stdout: ${ytStdout}`);
+        if (ytStderr) console.log(`[VideoLinkAction] yt-dlp stderr (often progress/info): ${ytStderr}`);
         
+        // Check if the file was actually created by yt-dlp
         await fsPromises.stat(tempDownloadedFilePath); 
-        console.log(`[VideoLinkAction - YTDLP AudioOnly] Audio successfully downloaded by yt-dlp to: ${tempDownloadedFilePath}`);
+        console.log(`[VideoLinkAction] Content successfully downloaded by yt-dlp to: ${tempDownloadedFilePath}`);
       } catch (ytDlpError: any) {
-        console.error(`[VideoLinkAction - YTDLP AudioOnly] yt-dlp execution error:`, ytDlpError);
+        console.error(`[VideoLinkAction] yt-dlp execution error:`, ytDlpError);
         const errorMessage = ytDlpError.stderr ? `yt-dlp failed: ${ytDlpError.stderr}` : `yt-dlp failed: ${ytDlpError.message}`;
         throw new Error(errorMessage);
       }
-    } else { // Direct link logic remains largely the same (downloads the file as is)
-      console.log("[VideoLinkAction - YTDLP AudioOnly] Assuming direct link or unknown URL. Attempting download with fetch...");
-      try {
-        const parsedUrl = new URL(videoUrl); 
-        const extFromPath = parsedUrl.pathname.split('.').pop()?.toLowerCase();
-        if (extFromPath && extFromPath.length > 1 && extFromPath.length <= 5) { 
-            downloadedFileExtension = extFromPath; // This is a video extension
-        } else {
-            downloadedFileExtension = 'mp4'; // Default if no clear extension
-        }
-      } catch (urlParseError) {
-        console.warn(`[VideoLinkAction - YTDLP AudioOnly] Could not parse URL to get extension: ${videoUrl}`, urlParseError);
-        downloadedFileExtension = 'mp4'; // Fallback
-      }
-      tempDownloadedFilePath = path.join(os.tmpdir(), `${downloadedFileNameBase}.${downloadedFileExtension}`);
-      
-      const response = await fetch(videoUrl);
-      if (!response.ok || !response.body) {
-        throw new Error(`Failed to download video from direct link: ${response.status} ${response.statusText} for URL: ${videoUrl}`);
-      }
-      const fileStream = fsCore.createWriteStream(tempDownloadedFilePath);
-      await new Promise<void>((resolve, reject) => { /* ... stream piping ... */ 
-          response.body!.pipe(fileStream);
-          response.body!.on("error", (err) => { console.error("[VideoLinkAction - YTDLP AudioOnly] Direct link response body stream error:", err); reject(err); });
-          fileStream.on("finish", () => { console.log("[VideoLinkAction - YTDLP AudioOnly] Direct link stream piped to file successfully."); resolve(); });
-          fileStream.on("error", (err) => { console.error("[VideoLinkAction - YTDLP AudioOnly] Direct link fileStream error:", err); reject(err); });
-      });
     }
-    if (!tempDownloadedFilePath) {
-        throw new Error("Video/Audio download failed or was not attempted for the given URL.");
+    
+    if (!tempDownloadedFilePath) { // Should not happen if logic above is correct
+        throw new Error("Download path was not set, indicating a download failure or logic error.");
     }
-    console.log(`[VideoLinkAction - YTDLP AudioOnly] Content successfully downloaded to: ${tempDownloadedFilePath}`);
+    console.log(`[VideoLinkAction] Content successfully downloaded to: ${tempDownloadedFilePath}`);
 
-    // --- 2. Use FFmpeg on the server to convert downloaded audio (or extract from video) to Opus ---
+    // --- 2. Use FFmpeg on the server to convert downloaded content to Opus ---
     const audioOutputFormat = 'opus';
     const opusAudioFileName = sanitizeFilename(`extracted_audio_opus_${uniqueId}.${audioOutputFormat}`);
     tempOpusAudioPath = path.join(os.tmpdir(), opusAudioFileName);
 
-    // FFmpeg command will take the downloaded file (which might be m4a, webm, mp4, etc.)
-    // and convert it to Opus. If it was already audio, -vn is harmless.
+    // FFmpeg command takes the downloaded file (could be video or already audio like m4a)
+    // -vn ensures only audio is processed if it was a video file.
     const ffmpegCommand = `ffmpeg -i "${tempDownloadedFilePath}" -y -vn -acodec libopus -b:a 64k -ar 16000 -ac 1 "${tempOpusAudioPath}"`;
     
-    console.log(`[VideoLinkAction - YTDLP AudioOnly] Executing FFmpeg: ${ffmpegCommand}`);
+    console.log(`[VideoLinkAction] Executing FFmpeg: ${ffmpegCommand}`);
     const { stdout, stderr } = await execAsync(ffmpegCommand);
     
-    if (stdout) console.log(`[VideoLinkAction - YTDLP AudioOnly] FFmpeg stdout: ${stdout}`);
-    if (stderr) console.log(`[VideoLinkAction - YTDLP AudioOnly] FFmpeg stderr (often informational): ${stderr}`);
+    if (stdout) console.log(`[VideoLinkAction] FFmpeg stdout: ${stdout}`);
+    if (stderr) console.log(`[VideoLinkAction] FFmpeg stderr (often informational): ${stderr}`);
     
     try {
         const stats = await fsPromises.stat(tempOpusAudioPath);
         if (stats.size === 0) {
             throw new Error(`Extracted Opus audio file is empty. FFmpeg stderr (if any): ${stderr || 'N/A'}`);
         }
-        console.log(`[VideoLinkAction - YTDLP AudioOnly] Opus audio extracted to: ${tempOpusAudioPath}, size: ${stats.size}`);
+        console.log(`[VideoLinkAction] Opus audio extracted to: ${tempOpusAudioPath}, size: ${stats.size}`);
     } catch (statError: any) {
-        console.error(`[VideoLinkAction - YTDLP AudioOnly] Error accessing extracted Opus audio file stats: ${statError.message}`);
+        console.error(`[VideoLinkAction] Error accessing extracted Opus audio file stats: ${statError.message}`);
         throw new Error(`Extracted Opus audio file not found or unreadable after FFmpeg. FFmpeg stderr (if any): ${stderr || 'N/A'}`);
     }
     
     const audioFileBuffer = await fsPromises.readFile(tempOpusAudioPath);
+    
+    if (audioFileBuffer.length > GROQ_AUDIO_LIMIT_BYTES) {
+      const fileSizeMB = (audioFileBuffer.length / (1024 * 1024)).toFixed(2);
+      const limitMB = (GROQ_AUDIO_LIMIT_BYTES / (1024 * 1024)).toFixed(2);
+      const errorMessage = `Extracted audio (${fileSizeMB} MB) exceeds the transcription service limit of ${limitMB} MB. Please use a shorter video.`;
+      console.error(`[ServerAction] ${errorMessage}`);
+      // Clean up temp files before returning
+      if (tempDownloadedFilePath) await fsPromises.unlink(tempDownloadedFilePath).catch(console.warn);
+      if (tempOpusAudioPath) await fsPromises.unlink(tempOpusAudioPath).catch(console.warn);
+      return { success: false, error: errorMessage };
+    }
 
     const formData = new FormData();
     const audioBlobForGroq = new Blob([audioFileBuffer], { type: `audio/${audioOutputFormat}` });
     formData.append("audioBlob", audioBlobForGroq, opusAudioFileName); 
 
-    console.log("[VideoLinkAction - YTDLP AudioOnly] Calling transcribeAudioAction with server-extracted Opus audio...");
-    return await transcribeAudioAction(formData);
+    console.log("[ServerAction] Calling transcribeAudioAction with server-extracted Opus audio...");
+    return await transcribeAudioAction(formData, mode);
 
   } catch (error: any) {
-    console.error("[VideoLinkAction - YTDLP AudioOnly] Error in processing pipeline:", error);
+    console.error("[VideoLinkAction] Error in processing pipeline:", error);
     const errorCode = (typeof error === 'object' && error !== null && 'code' in error) ? ` (Code: ${error.code}` : '';
     return { 
         success: false, 
@@ -160,16 +155,16 @@ export async function processVideoLinkAction(
     };
   } finally {
     if (tempDownloadedFilePath) {
-      console.log(`[VideoLinkAction - YTDLP AudioOnly] Attempting to delete temp downloaded file: ${tempDownloadedFilePath}`);
+      console.log(`[VideoLinkAction] Attempting to delete temp downloaded file: ${tempDownloadedFilePath}`);
       fsPromises.unlink(tempDownloadedFilePath)
-        .then(() => console.log(`[VideoLinkAction - YTDLP AudioOnly] Deleted temp downloaded file: ${tempDownloadedFilePath}`))
-        .catch(err => console.warn(`[VideoLinkAction - YTDLP AudioOnly] Failed to delete temp downloaded file (${tempDownloadedFilePath}):`, err.message));
+        .then(() => console.log(`[VideoLinkAction] Deleted temp downloaded file: ${tempDownloadedFilePath}`))
+        .catch(err => console.warn(`[VideoLinkAction] Failed to delete temp downloaded file (${tempDownloadedFilePath}):`, err.message));
     }
     if (tempOpusAudioPath) {
-      console.log(`[VideoLinkAction - YTDLP AudioOnly] Attempting to delete temp Opus audio: ${tempOpusAudioPath}`);
+      console.log(`[VideoLinkAction] Attempting to delete temp Opus audio: ${tempOpusAudioPath}`);
       fsPromises.unlink(tempOpusAudioPath)
-        .then(() => console.log(`[VideoLinkAction - YTDLP AudioOnly] Deleted temp Opus audio: ${tempOpusAudioPath}`))
-        .catch(err => console.warn(`[VideoLinkAction - YTDLP AudioOnly] Failed to delete temp Opus audio (${tempOpusAudioPath}):`, err.message));
+        .then(() => console.log(`[VideoLinkAction] Deleted temp Opus audio: ${tempOpusAudioPath}`))
+        .catch(err => console.warn(`[VideoLinkAction] Failed to delete temp Opus audio (${tempOpusAudioPath}):`, err.message));
     }
   }
 }

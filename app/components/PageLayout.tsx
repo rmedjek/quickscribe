@@ -1,32 +1,21 @@
 // app/components/PageLayout.tsx
-import React from 'react';
+import React from "react";
 
 interface PageLayoutProps {
   children: React.ReactNode;
 }
 
-const PageLayout: React.FC<PageLayoutProps> = ({ children }) => {
+const PageLayout: React.FC<PageLayoutProps> = ({children}) => {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col items-center">
-      {/* Optional: Simple Header */}
-      <header className="w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-        <h1 className="text-4xl font-bold text-sky-600 text-center">
-          QuickScribe
-        </h1>
-        <p className="text-lg text-slate-600 text-center mt-2">
-          Effortless transcripts for your videos.
-        </p>
-      </header>
-
-      <main className="w-full max-w-2xl px-4 sm:px-6 lg:px-8 flex-grow py-8">
-        {children}
-      </main>
-
-      {/* Consistent Footer */}
-      <footer className="w-full max-w-4xl px-4 py-6 sm:px-6 lg:px-8 text-center">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+      {children}
+      <footer className="w-full max-w-4xl px-4 py-4 text-center mt-6 sm:mt-8">
+        {" "}
+        {/* Reduced py and mt slightly */}
         <p className="text-xs text-slate-500">
           Your video is processed in your browser for privacy. Only audio is
-          sent for transcription.
+          sent for transcription. (Consider if this footer is still needed or if
+          similar info is on the panel itself)
         </p>
       </footer>
     </div>

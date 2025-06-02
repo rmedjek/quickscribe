@@ -3,6 +3,7 @@
 
 import Groq from 'groq-sdk';
 import { generateSRT, generateVTT, Segment } from '../lib/caption-utils'; // Assuming path
+import { TranscriptionMode } from '@/components/ConfirmationView';
 
 if (!process.env.GROQ_API_KEY) {
   throw new Error("GROQ_API_KEY environment variable is not set.");
@@ -10,7 +11,7 @@ if (!process.env.GROQ_API_KEY) {
 
 // Configure the Groq client with a longer timeout
 const GROQ_REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes, example
-// const GROQ_MAX_RETRIES = 1; // Optional: reduce retries if you want faster failure for debugging
+// const GROQ_MAX_RETRIES = 0; // Optional: reduce retries if you want faster failure for debugging
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -29,10 +30,12 @@ export interface DetailedTranscriptionResult {
 }
 
 export async function transcribeAudioAction(
-  formData: FormData
+  formData: FormData,
+   mode: TranscriptionMode // Receive the mode 
 ): Promise<{ success: boolean; data?: DetailedTranscriptionResult; error?: string }> {
   console.log("[Server Action] transcribeAudioAction called");
-
+  
+  const modelToUse = mode === 'turbo' ? 'whisper-large-v3' : 'distil-whisper-large-v3-en';
   const audioBlob = formData.get("audioBlob") as File | null;
 
   if (!audioBlob) {
@@ -47,7 +50,7 @@ export async function transcribeAudioAction(
     
     const transcription = await groq.audio.transcriptions.create({
       file: audioBlob,
-      model: "whisper-large-v3",
+      model: modelToUse,
       response_format: "verbose_json", 
       timestamp_granularities: ["segment"],
     }
@@ -64,16 +67,15 @@ export async function transcribeAudioAction(
     const segmentsFromApi = (transcription as any).segments as Array<any> | undefined;
 
     if (rawText && Array.isArray(segmentsFromApi)) {
-      const typedSegments: Segment[] = segmentsFromApi.map((s: any, index: number) => ({
-        id: s.id ?? index, 
-        start: s.start || 0,
-        end: s.end || 0,
-        text: s.text || "",
-      }));
+        const typedSegments: Segment[] = segmentsFromApi.map((s: any, index: number) => ({
+          id: s.id ?? index, 
+          start: s.start || 0,
+          end: s.end || 0,
+          text: s.text || "",
+    }));
 
       const srt = generateSRT(typedSegments);
       const vtt = generateVTT(typedSegments);
-
       const result: DetailedTranscriptionResult = {
         text: rawText,
         language: language,
