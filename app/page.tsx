@@ -2,8 +2,8 @@
 "use client";
 
 import React, {useState, useCallback, useEffect} from "react";
+import {Settings, Waves, FileText} from "lucide-react"; /* ✔ */
 
-// UI Components
 import PageLayout from "@/components/PageLayout";
 import InputSelectionView from "@/components/InputSelectionView";
 import ConfirmationView, {
@@ -13,32 +13,27 @@ import ProcessingView, {StageDisplayData} from "@/components/ProcessingView";
 import ResultsView from "@/components/ResultsView";
 import StyledButton from "@/components/StyledButton";
 
-// FFmpeg & Actions & Utils
 import {FFmpeg} from "@ffmpeg/ffmpeg";
-import {getFFmpegInstance} from "@/lib/ffmpeg-utils"; // Only getFFmpegInstance needed here
-import {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction"; // Type from one of the actions
+import {getFFmpegInstance} from "@/lib/ffmpeg-utils";
+import {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
 
-// Stepper
-import {UploadCloud, Settings, FileText as TranscribeIcon} from "lucide-react";
-
-// Hooks
 import {useServerLinkProcessor} from "./hooks/useServerLinkProcessor";
 import {useClientFileProcessor} from "./hooks/useClientFileProcessor";
 import {useServerFileUploadProcessor} from "./hooks/useServerFileUploadProcessor";
 
-// Assuming ProgressStepper's Step type is defined and exported, or define locally
-interface AppStep {
-  id: string;
+/* ------------ step order: Configure → Process Audio → Transcribe --- */
+export interface AppStep {
+  id: "configure" | "process" | "transcribe";
   name: string;
   icon: React.ElementType;
 }
 const APP_STEPS: AppStep[] = [
-  {id: "upload", name: "Select Input", icon: UploadCloud},
-  {id: "settings", name: "Configure", icon: Settings},
-  {id: "transcribe", name: "Get Transcripts", icon: TranscribeIcon},
+  {id: "configure", name: "Configure", icon: Settings},
+  {id: "process", name: "Process Audio", icon: Waves},
+  {id: "transcribe", name: "Get Transcripts", icon: FileText},
 ];
 
-// View States
+/* ---------------------------- view enum --------------------------- */
 enum ViewState {
   SelectingInput,
   ConfirmingInput,
@@ -150,17 +145,19 @@ const getUserFriendlyErrorMessage = (
   return "Oops! Something went wrong during processing. Please try again. If the problem continues, the file might be unsuitable.";
 };
 
+/* ================================================================== */
 export default function HomePage() {
+  /* --------------------------------------------------------------- */
   const [currentView, setCurrentView] = useState<ViewState>(
     ViewState.SelectingInput
   );
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [submittedLink, setSubmittedLink] = useState<string | null>(null);
-  const [ffmpeg, setFfmpeg] = useState<FFmpeg | null>(null);
-  const [, setSelectedTranscriptionMode] = useState<TranscriptionMode>("chill"); // Default mode
 
-  // State for UI feedback during processing
-  const [currentOverallStatus, setCurrentOverallStatus] = useState<string>("");
+  const [ffmpeg, setFfmpeg] = useState<FFmpeg | null>(null);
+  const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("chill");
+
+  const [currentOverallStatus, setCurrentOverallStatus] = useState("");
   const [processingUIStages, setProcessingUIStages] = useState<
     StageDisplayData[]
   >([]);
@@ -168,109 +165,84 @@ export default function HomePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transcriptionData, setTranscriptionData] =
     useState<DetailedTranscriptionResult | null>(null);
-  const [currentStepperStepId, setCurrentStepperStepId] = useState<string>(
-    APP_STEPS[0].id
-  );
+  const [currentAppStepId, setCurrentAppStepId] =
+    useState<AppStep["id"]>("configure");
 
-  // --- Common Callbacks for Hooks ---
+  /* --------------- callbacks shared by hooks --------------------- */
   const handleProcessingComplete = useCallback(
     (data: DetailedTranscriptionResult) => {
       setTranscriptionData(data);
-      setCurrentOverallStatus("Transcription complete!"); // Final status
-      // Individual stages should be marked complete by the hook via onStagesUpdate
+      setCurrentOverallStatus("Transcription complete!");
       setCurrentView(ViewState.ShowingResults);
     },
     []
   );
 
   const handleError = useCallback(
-    (
-      context: string,
-      errorMsg: string,
-      fileName?: string,
-      fileSizeMB?: string
-    ) => {
-      setErrorMessage(
-        getUserFriendlyErrorMessage(context, errorMsg, fileName, fileSizeMB)
-      );
+    (ctx: string, msg: string, fn?: string, sz?: string) => {
+      setErrorMessage(getUserFriendlyErrorMessage(ctx, msg, fn, sz));
       setCurrentView(ViewState.Error);
     },
     []
   );
 
-  const handleStatusUpdate = useCallback((message: string) => {
-    setCurrentOverallStatus(message);
-  }, []);
+  const handleStatusUpdate = useCallback(
+    (m: string) => setCurrentOverallStatus(m),
+    []
+  );
 
   const handleStagesUpdate = useCallback(
     (
-      stages:
-        | StageDisplayData[]
-        | ((prev: StageDisplayData[]) => StageDisplayData[])
+      s: StageDisplayData[] | ((p: StageDisplayData[]) => StageDisplayData[])
     ) => {
-      // Ensure functional updates are handled if hooks use them
-      if (typeof stages === "function") {
-        setProcessingUIStages(stages);
+      if (typeof s === "function") {
+        setProcessingUIStages(s);
       } else {
-        setProcessingUIStages([...stages]); // Create new array to ensure re-render
+        setProcessingUIStages([...s]);
       }
     },
     []
   );
 
-  // --- Instantiate Processing Hooks ---
-  const {processFile: processClientFile, isProcessing: isClientProcessing} =
-    useClientFileProcessor({
-      ffmpeg: ffmpeg,
-      onProcessingComplete: handleProcessingComplete,
-      onError: (msg, fName, fSize) =>
-        handleError("Client File Processing", msg, fName, fSize),
-      onStatusUpdate: handleStatusUpdate,
-      onStagesUpdate: handleStagesUpdate,
-    });
-
-  const {processLink: processServerLink, isProcessing: isServerLinkProcessing} =
-    useServerLinkProcessor({
-      onProcessingComplete: handleProcessingComplete,
-      onError: (msg) => handleError("Server Link Processing", msg),
-      onStatusUpdate: handleStatusUpdate,
-      onStagesUpdate: handleStagesUpdate,
-    });
-
-  const {
-    processFile: processServerUploadedFile,
-    isProcessing: isServerFileProcessing,
-  } = useServerFileUploadProcessor({
+  /* --------------- processing hooks ------------------------------ */
+  const {processFile: processClientFile} = useClientFileProcessor({
+    ffmpeg,
     onProcessingComplete: handleProcessingComplete,
-    onError: (msg, fName, fSize) =>
-      handleError("Server File Upload", msg, fName, fSize),
+    onError: (m, f, sz) => handleError("Client File Processing", m, f, sz),
     onStatusUpdate: handleStatusUpdate,
     onStagesUpdate: handleStagesUpdate,
+    onStepChange: setCurrentAppStepId,
   });
 
-  // --- FFmpeg Loading Effect ---
-  useEffect(() => {
-    async function loadFFmpegInstance() {
-      if (ffmpeg) return; // Already loaded
-      try {
-        console.log("MainPage: Initializing FFmpeg...");
-        const instance = await getFFmpegInstance((logMsg) =>
-          console.log("[FFMPEG CORE LOG - MainPage]:", logMsg)
-        );
-        setFfmpeg(instance);
-        console.log("MainPage: FFmpeg instance ready.");
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        handleError(
-          "FFmpeg Load",
-          `Critical Error: Could not initialize FFmpeg. ${message}`
-        );
-      }
-    }
-    loadFFmpegInstance();
-  }, [ffmpeg, handleError]); // Added handleError to dependency if it's stable via useCallback
+  const {processLink: processServerLink} = useServerLinkProcessor({
+    onProcessingComplete: handleProcessingComplete,
+    onError: (m) => handleError("Server Link Processing", m),
+    onStatusUpdate: handleStatusUpdate,
+    onStagesUpdate: handleStagesUpdate,
+    onStepChange: setCurrentAppStepId,
+  });
 
-  // --- Reset Logic ---
+  const {processFile: processServerUploadedFile} = useServerFileUploadProcessor(
+    {
+      onProcessingComplete: handleProcessingComplete,
+      onError: (m, f, sz) => handleError("Server File Upload", m, f, sz),
+      onStatusUpdate: handleStatusUpdate,
+      onStagesUpdate: handleStagesUpdate,
+      onStepChange: setCurrentAppStepId,
+    }
+  );
+
+  /* --------------- FFmpeg init ----------------------------------- */
+  useEffect(() => {
+    if (ffmpeg) return;
+    getFFmpegInstance()
+      .then(setFfmpeg)
+      .catch((e) =>
+        handleError("FFmpeg Load", e instanceof Error ? e.message : String(e))
+      );
+  }, [ffmpeg, handleError]);
+
+  /* --------------- reset ----------------------------------------- */
   const resetToStart = useCallback(() => {
     setSelectedFile(null);
     setSubmittedLink(null);
@@ -278,23 +250,19 @@ export default function HomePage() {
     setProcessingUIStages([]);
     setErrorMessage(null);
     setTranscriptionData(null);
-    setCurrentStepperStepId(APP_STEPS[0].id);
     setCurrentView(ViewState.SelectingInput);
-    // Hooks might have internal timers; they should clean themselves up on unmount or via a reset function if exposed
   }, []);
 
-  // --- UI Event Handlers ---
+  /* --------------- UI handlers (unchanged except no step-state) -- */
   const handleFileSelected = (file: File) => {
     setSelectedFile(file);
     setSubmittedLink(null);
-    setCurrentStepperStepId(APP_STEPS[1].id);
     setCurrentView(ViewState.ConfirmingInput);
   };
 
   const handleLinkSubmitted = (link: string) => {
     setSubmittedLink(link);
     setSelectedFile(null);
-    setCurrentStepperStepId(APP_STEPS[1].id);
     setCurrentView(ViewState.ConfirmingInput);
   };
 
@@ -302,67 +270,23 @@ export default function HomePage() {
     processingPath: "client" | "server",
     mode: TranscriptionMode
   ) => {
-    setCurrentStepperStepId(APP_STEPS[2].id);
-    setSelectedTranscriptionMode(mode); // Store selected mode
+    setSelectedMode(mode);
 
-    if (!ffmpeg && processingPath === "client" && selectedFile) {
-      handleError(
-        "Confirmation",
-        "FFmpeg is not ready. Please wait or refresh."
-      );
-      return;
-    }
-
-    if (processingPath === "client") {
-      if (selectedFile) {
-        setCurrentView(ViewState.ProcessingClient);
-        processClientFile(selectedFile, mode);
-      } else if (submittedLink) {
-        handleError(
-          "Confirmation",
-          "Client-side processing of video links is not supported."
-        );
-      }
+    if (processingPath === "client" && selectedFile) {
+      setCurrentView(ViewState.ProcessingClient);
+      processClientFile(selectedFile, mode);
     } else if (processingPath === "server") {
+      setCurrentView(ViewState.ProcessingServer);
       if (selectedFile) {
-        setCurrentView(ViewState.ProcessingServer);
         processServerUploadedFile(selectedFile, mode);
       } else if (submittedLink) {
-        setCurrentView(ViewState.ProcessingServer);
         processServerLink(submittedLink, mode);
-      } else {
-        handleError(
-          "Confirmation",
-          "No input (file or link) provided for server processing."
-        );
       }
     }
   };
 
-  const handleCancelConfirmation = () => {
-    setCurrentStepperStepId(APP_STEPS[0].id);
-    resetToStart();
-  };
-
-  const ViewStateRendererError = () => (
-    <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl max-w-lg mx-auto text-center">
-      <h2 className="text-xl font-semibold text-red-600 mb-4">
-        An Error Occurred
-      </h2>
-      <p className="text-slate-700 mb-6">
-        {errorMessage || "An unspecified error occurred."}
-      </p>
-      <StyledButton onClick={resetToStart} variant="secondary">
-        {" "}
-        Start Over{" "}
-      </StyledButton>
-    </div>
-  );
-
+  /* --------------- renderCurrentView (step id is literal) -------- */
   const renderCurrentView = () => {
-    // console.log("[renderCurrentView] Current ViewState:", currentView, " (Enum Name:", ViewState[currentView], ")");
-    // console.log("[renderCurrentView] isClientProcessing:", isClientProcessing, "isServerLinkProcessing:", isServerLinkProcessing, "isServerFileProcessing:", isServerFileProcessing);
-
     switch (currentView) {
       case ViewState.SelectingInput:
         return (
@@ -377,44 +301,45 @@ export default function HomePage() {
             file={selectedFile}
             link={submittedLink}
             onConfirm={handleConfirmation}
-            onCancel={handleCancelConfirmation}
-            currentStepIdForStepper={currentStepperStepId}
+            onCancel={resetToStart}
           />
         );
-      case ViewState.ProcessingClient: // Intentionally fall through if UI is same
+      case ViewState.ProcessingClient:
       case ViewState.ProcessingServer:
-        // Determine if any processing hook is active for the indeterminate flag for ProcessingView
-        // This assumes ProcessingView might still want a single isIndeterminate flag for its overall look
-        // OR ProcessingView handles per-stage indeterminacy based on processingUIStages.
-        // For now, let's assume ProcessingView uses per-stage data.
         return (
           <ProcessingView
             stages={processingUIStages}
             currentOverallStatusMessage={currentOverallStatus}
             appSteps={APP_STEPS}
-            currentAppStepId={currentStepperStepId}
+            currentAppStepId={currentAppStepId}
           />
         );
       case ViewState.ShowingResults:
-        if (transcriptionData) {
-          return (
+        return (
+          transcriptionData && (
             <ResultsView
               transcriptionData={transcriptionData}
+              mode={selectedMode}
               onRestart={resetToStart}
             />
-          );
-        }
-        handleError("ShowingResults", "Results data is missing."); // Call handleError to set state
-        return null; // handleError will change view to Error, causing re-render
-      case ViewState.Error:
-        return <ViewStateRendererError />;
-      default:
-        return (
-          <p>
-            Unknown application state. (currentView value: {String(currentView)}
-            )
-          </p>
+          )
         );
+      case ViewState.Error:
+        return (
+          <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl max-w-lg mx-auto text-center">
+            <h2 className="text-xl font-semibold text-red-600 mb-4">
+              An Error Occurred
+            </h2>
+            <p className="text-slate-700 mb-6">
+              {errorMessage ?? "An unspecified error occurred."}
+            </p>
+            <StyledButton onClick={resetToStart} variant="secondary">
+              Start Over
+            </StyledButton>
+          </div>
+        );
+      default:
+        return null;
     }
   };
 

@@ -4,14 +4,13 @@
 import React, {useState} from "react";
 import {
   FileText,
-  Link as LinkIcon,
   AlertTriangle,
   Server,
   CloudCog,
   Zap,
   Snowflake,
-  UploadCloud,
   Settings,
+  Waves,
 } from "lucide-react"; // Added more icons
 import StyledButton from "./StyledButton";
 import ProgressStepper from "./ProgressStepper";
@@ -27,13 +26,13 @@ interface ConfirmationViewProps {
     mode: TranscriptionMode
   ) => void;
   onCancel: () => void;
-  currentStepIdForStepper: string; // e.g., 'settings'
+  currentStepIdForStepper?: string; // e.g., 'settings'
 }
 
 // Define Stepper steps (can also be passed as props if they vary)
 const APP_STEPS = [
-  {id: "upload", name: "Upload Video", icon: UploadCloud},
-  {id: "settings", name: "Configure", icon: Settings},
+  {id: "configure", name: "Configure", icon: Settings},
+  {id: "process", name: "Process Audio", icon: Waves},
   {id: "transcribe", name: "Get Transcripts", icon: FileText},
 ];
 
@@ -42,7 +41,6 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   link,
   onConfirm,
   onCancel,
-  currentStepIdForStepper,
 }) => {
   const isFileProvided = !!file;
   const isLinkProvided = !!link && !file;
@@ -67,10 +65,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
         <p className="text-sm text-slate-500 mt-1">Powered by Groq</p>
       </div>
 
-      <ProgressStepper
-        steps={APP_STEPS}
-        currentStepId={currentStepIdForStepper}
-      />
+      <ProgressStepper steps={APP_STEPS} currentStepId="configure" />
 
       <div className="mb-6 p-4 border border-slate-200 rounded-lg bg-slate-50 text-sm">
         <h3 className="text-base font-semibold mb-2 text-slate-700">

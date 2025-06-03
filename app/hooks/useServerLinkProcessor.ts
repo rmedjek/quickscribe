@@ -1,160 +1,135 @@
 // app/hooks/useServerLinkProcessor.ts
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { processVideoLinkAction } from '@/actions/processVideoLinkAction';
-import { TranscriptionMode } from '@/components/ConfirmationView';
-import { StageDisplayData } from '@/components/ProcessingView';
-import { DetailedTranscriptionResult } from '@/actions/transcribeAudioAction';
+import { useState, useCallback, useRef, useEffect } from "react";
+import { processVideoLinkAction } from "@/actions/processVideoLinkAction";
+import { DetailedTranscriptionResult } from "@/actions/transcribeAudioAction";
+import { TranscriptionMode } from "@/components/ConfirmationView";
+import { StageDisplayData } from "@/components/ProcessingView";
+import { useStageUpdater } from "./useStageUpdater";
 
-const ESTIMATED_DOWNLOAD_AND_EXTRACT_MS = 60000; // e.g. 60s total for link→audio
-const ESTIMATED_SERVER_GROQ_MS       = 20000;
-const PROGRESS_INTERVAL_MS           = 250;
+const AUDIO_EST_MS = 12_000;
 
-interface ServerLinkProcessorOptions {
-  onProcessingComplete: (data: DetailedTranscriptionResult) => void;
-  onError: (errorMessage: string) => void;
-  onStatusUpdate: (message: string) => void;
-  onStagesUpdate: (stages: StageDisplayData[] | ((prevStages: StageDisplayData[]) => StageDisplayData[])) => void;
+/* ------------ props -------------------------------------------- */
+interface Props {
+  onProcessingComplete: (d: DetailedTranscriptionResult) => void;
+  onError: (msg: string) => void;
+  onStatusUpdate: (msg: string) => void;
+  onStagesUpdate: (
+    s: StageDisplayData[] | ((p: StageDisplayData[]) => StageDisplayData[])
+  ) => void;
+  /** advance stepper */
+  onStepChange?: (id: "configure" | "process" | "transcribe") => void;
 }
 
+/* ================================================================= */
 export function useServerLinkProcessor({
   onProcessingComplete,
   onError,
   onStatusUpdate,
   onStagesUpdate,
-}: ServerLinkProcessorOptions) {
-  const [isProcessing, setIsProcessing] = useState(false);
-  const simulateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  onStepChange,
+}: Props) {
+  const [busy, setBusy] = useState(false);
+  const patch = useStageUpdater(onStagesUpdate);
+  const timer = useRef<NodeJS.Timeout | null>(null);
 
-  const clearSimInterval = useCallback(() => {
-    if (simulateIntervalRef.current) {
-      clearInterval(simulateIntervalRef.current);
-      simulateIntervalRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => clearSimInterval();
-  }, [clearSimInterval]);
-
-  const STAGES_TEMPLATE = useMemo(() => [
-    {
-      name: "ServerLinkExtract",
-      label: "Downloading & Extracting Audio",
-      subText: "Fetching from link…",
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
     },
-    {
-      name: "ServerLinkTranscription",
-      label: "Generating Transcript",
-      subText: "AI is transcribing…",
-    },
-  ] as const, []);
+    []
+  );
 
-  const processLink = useCallback(async (link: string, mode: TranscriptionMode) => {
-    setIsProcessing(true);
-    onStatusUpdate("Server: Downloading & extracting audio…");
+  /* ---------------------------------------------------------------- */
+  const processLink = useCallback(
+    async (link: string, mode: TranscriptionMode) => {
+      setBusy(true);
+      onStepChange?.("process");
 
-    // Initialize both stages:
-    let currentStages: StageDisplayData[] = STAGES_TEMPLATE.map((tmpl, idx) => ({
-      name: tmpl.name,
-      label: tmpl.label,
-      progress: 0,
-      isActive: idx === 0,
-      isComplete: false,
-      isIndeterminate: false,
-      subText: tmpl.subText,
-    }));
-    onStagesUpdate([...currentStages]);
+      onStagesUpdate([
+        {
+          name: "audio",
+          label: "Downloading & Processing Audio",
+          progress: 0,
+          isActive: true,
+          isComplete: false,
+          isIndeterminate: true,
+        },
+        {
+          name: "groq",
+          label: "AI Transcribing…",
+          progress: 0,
+          isActive: false,
+          isComplete: false,
+          isIndeterminate: false,
+          subText: "",
+        },
+      ]);
 
-    // Simulate Stage 0 progress (download + ffmpeg)
-    let downloadStep = 0;
-    const downloadTotalSteps = Math.max(1, ESTIMATED_DOWNLOAD_AND_EXTRACT_MS / PROGRESS_INTERVAL_MS);
+      const modelName =
+        mode === "turbo"
+          ? "Whisper Large v3"
+          : "Distil-Whisper Large-v3-en";
 
-    simulateIntervalRef.current = setInterval(() => {
-      downloadStep++;
-      const fraction = Math.min(0.98, downloadStep / downloadTotalSteps);
-      currentStages = currentStages.map(s =>
-        s.name === "ServerLinkExtract"
-          ? { ...s, progress: fraction, subText: `Downloading & extracting… ${Math.round(fraction * 100)}%` }
-          : s
-      );
-      onStagesUpdate([...currentStages]);
-      if (fraction >= 0.98) {
-        clearSimInterval();
-      }
-    }, PROGRESS_INTERVAL_MS);
+      /* ---------------- fake progress while server extracts ------- */
+      timer.current = setTimeout(() => {
+        patch("audio", {
+          isIndeterminate: false,
+          progress: 1,
+          isActive: false,
+          isComplete: true,
+        });
 
-    try {
-      // Actually call your server action:
-      const response = await processVideoLinkAction(link, mode);
+        patch("groq", {
+          isActive: true,
+          isIndeterminate: true,
+          subText: `Processing using Groq's ${modelName} model`,
+        });
 
-      // As soon as that promise resolves, kill the Stage 0 interval
-      clearSimInterval();
-      currentStages = currentStages.map(s =>
-        s.name === "ServerLinkExtract"
-          ? { ...s, progress: 1, isActive: false, isComplete: true, subText: "✓ Audio Ready" }
-          : s
-      );
-      onStagesUpdate([...currentStages]);
+        /* 🔔 stepper advance */
+        onStepChange?.("transcribe");
+      }, AUDIO_EST_MS);
 
-      if (!response.success || !response.data) {
-        throw new Error(response.error || "Server‐side link processing failed.");
+      onStatusUpdate("Server is processing the link…");
+      const res = await processVideoLinkAction(link, mode);
+      clearTimeout(timer.current!);
+
+      if (!res.success || !res.data) {
+        patch("audio", { isIndeterminate: false });
+        patch("groq", { isIndeterminate: false });
+        onError(res.error ?? "Failed to process link");
+        setBusy(false);
+        return;
       }
 
-      // Stage 1: “Generating Transcript”
-      onStatusUpdate("Server: Generating transcript…");
-      currentStages = currentStages.map(s =>
-        s.name === "ServerLinkTranscription"
-          ? { ...s, isActive: true, progress: 0, isComplete: false, isIndeterminate: false, subText: "AI is transcribing…" }
-          : s
-      );
-      onStagesUpdate([...currentStages]);
+      /* ---------------- mark both bars complete ------------------- */
+      patch("audio", {
+        isIndeterminate: false,
+        progress: 1,
+        isActive: false,
+        isComplete: true,
+      });
+      patch("groq", {
+        isIndeterminate: false,
+        progress: 1,
+        isActive: false,
+        isComplete: true,
+        subText: `Processed with Groq's ${modelName} model`,
+      });
 
-      // Simulate transcription progress:
-      let transcriptStep = 0;
-      const transcriptTotalSteps = Math.max(1, ESTIMATED_SERVER_GROQ_MS / PROGRESS_INTERVAL_MS);
-      simulateIntervalRef.current = setInterval(() => {
-        transcriptStep++;
-        const fraction = Math.min(0.95, transcriptStep / transcriptTotalSteps);
-        currentStages = currentStages.map(s =>
-          s.name === "ServerLinkTranscription"
-            ? { ...s, progress: fraction, subText: `Transcribing… ${Math.round(fraction * 100)}%` }
-            : s
-        );
-        onStagesUpdate([...currentStages]);
-        if (fraction >= 0.95) {
-          clearSimInterval();
-        }
-      }, PROGRESS_INTERVAL_MS);
+      onProcessingComplete(res.data);
+      setBusy(false);
+    },
+    [
+      patch,
+      onError,
+      onProcessingComplete,
+      onStatusUpdate,
+      onStagesUpdate,
+      onStepChange,
+    ]
+  );
 
-      // Once the server action has returned (including Groq), finish Stage 1:
-      clearSimInterval();
-      currentStages = currentStages.map(s =>
-        s.name === "ServerLinkTranscription"
-          ? { ...s, progress: 1, isActive: false, isComplete: true, subText: "✓ Done" }
-          : s
-      );
-      onStagesUpdate([...currentStages]);
-
-      onStatusUpdate("Transcription complete!");
-      onProcessingComplete(response.data);
-
-    } catch (err) {
-      clearSimInterval();
-      const rawMsg = err instanceof Error ? err.message : String(err);
-      onError(rawMsg);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [
-    onError,
-    onStagesUpdate,
-    onStatusUpdate,
-    onProcessingComplete,
-    clearSimInterval,
-    STAGES_TEMPLATE,
-  ]);
-
-  return { processLink, isProcessing };
+  return { processLink, isProcessing: busy };
 }

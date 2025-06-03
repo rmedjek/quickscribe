@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* app/actions/extractAudioAction.ts */
 "use server";
 
 import * as fs from "node:fs/promises";
@@ -6,64 +6,48 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { TranscriptionMode } from "@/components/ConfirmationView";
 
 const execAsync = promisify(exec);
 
 interface ExtractOk {
   success: true;
-  audioBuffer: ArrayBuffer;   // 👈  sent back to browser
+  /** plain text → serialisable */
+  audioBase64: string;
   fileName: string;
-  durationSec?: number;
   sizeBytes: number;
 }
-interface ExtractFail {
-  success: false;
-  error: string;
-}
+interface ExtractFail { success: false; error: string; }
 export type ExtractAudioResponse = ExtractOk | ExtractFail;
 
-/** 1️⃣  receives FormData("videoFile") —> returns Opus in ArrayBuffer  */
 export async function extractAudioAction(
-  formData: FormData,
-  mode?: TranscriptionMode      // mode not used here but you may log it
+  formData: FormData
 ): Promise<ExtractAudioResponse> {
-  const videoFile = formData.get("videoFile") as File | null;
-  if (!videoFile) {
-    return { success: false, error: "No video file received." };
+  const file = formData.get("videoFile") as File | null;
+  if (!file) return { success: false, error: "No video file received." };
+
+  /* save upload */
+  const tmpVid = path.join(os.tmpdir(), `ul_${Date.now()}_${file.name.replace(/[^\w.-]/g, "_")}`);
+  await fs.writeFile(tmpVid, new Uint8Array(await file.arrayBuffer()));
+
+  /* ffmpeg → opus */
+  const tmpOpus = tmpVid + ".opus";
+  const cmd = `ffmpeg -i "${tmpVid}" -y -vn -acodec libopus -b:a 64k -ar 16000 -ac 1 "${tmpOpus}"`;
+  try { await execAsync(cmd, { timeout: 5 * 60_000 }); }
+  catch (e: unknown) {
+    await fs.unlink(tmpVid).catch(()=>{});
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    return { success: false, error: `FFmpeg failed: ${errorMsg}` };
   }
 
-  /* ── 1. save upload to /tmp ─────────────────────────────────────── */
-  const tmpVideo = path.join(
-    os.tmpdir(),
-    `ul_${Date.now()}_${videoFile.name.replace(/[^\w.-]/g, "_")}`
-  );
-  await fs.writeFile(tmpVideo, Buffer.from(await videoFile.arrayBuffer()));
-
-  /* ── 2. run FFmpeg → mono Opus @16 kHz ──────────────────────────── */
-  const tmpOpus = tmpVideo + ".opus";
-  const cmd = `ffmpeg -i "${tmpVideo}" -y -vn -acodec libopus -b:a 64k -ar 16000 -ac 1 "${tmpOpus}"`;
-  try {
-    await execAsync(cmd, { timeout: 5 * 60_000 }); // 5 min guard
-  } catch (e: any) {
-    await fs.unlink(tmpVideo).catch(() => {});
-    return {
-      success: false,
-      error: `FFmpeg failed: ${e?.message ?? e}`,
-    };
-  }
-  const buf = await fs.readFile(tmpOpus);
+  const buf   = await fs.readFile(tmpOpus);      // Buffer
   const stats = await fs.stat(tmpOpus);
 
-  /* optional: probe duration (ffprobe) – skipped for brevity */
-
-  /* ── 3. cleanup temp files ──────────────────────────────────────── */
-  await fs.unlink(tmpVideo).catch(() => {});
-  await fs.unlink(tmpOpus).catch(() => {});
+  await fs.unlink(tmpVid).catch(()=>{});
+  await fs.unlink(tmpOpus).catch(()=>{});
 
   return {
     success: true,
-    audioBuffer: buf.buffer,             // ArrayBuffer serialises fine
+    audioBase64: buf.toString("base64"),          // 👈  plain text
     fileName: "audio.opus",
     sizeBytes: stats.size,
   };
