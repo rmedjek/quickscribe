@@ -139,7 +139,7 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
             ref={fileInputRef}
             onChange={handleFileChange}
             className="hidden"
-            accept="video/mp4,video/mov,video/webm,video/x-matroska,video/x-msvideo,video/x-flv,video/*" // Broaden accept
+            accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,video/x-flv,video/*" // Broaden accept
           />
           <StyledButton
             variant="primary"

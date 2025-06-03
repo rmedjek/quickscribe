@@ -98,7 +98,7 @@ export async function processLargeVideoFileAction(
 
   } catch (error: any) {
     console.error("[LargeFileAction] Error in processing pipeline:", error);
-    const errorCode = (typeof error === 'object' && error !== null && 'code' in error) ? ` (Code: ${error.code}` : '';
+    const errorCode = (typeof error === 'object' && error !== null && 'code' in error) ? ` (Code: ${error.code})` : '';
     return { 
         success: false, 
         error: `Failed to process uploaded video file: ${error instanceof Error ? error.message : String(error)}${errorCode}` 

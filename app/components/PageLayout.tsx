@@ -13,9 +13,9 @@ const PageLayout: React.FC<PageLayoutProps> = ({children}) => {
         {" "}
         {/* Reduced py and mt slightly */}
         <p className="text-xs text-slate-500">
-          Your video is processed in your browser for privacy. Only audio is
-          sent for transcription. (Consider if this footer is still needed or if
-          similar info is on the panel itself)
+          Your video is processed in your browser for privacy and only audio is
+          sent for transcription. If you choose server processing, your file is
+          uploaded securely and deleted after processing.
         </p>
       </footer>
     </div>

@@ -1,14 +1,16 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict'; // Use Node's assert for expectations
 import { formatTimestamp, generateSRT, generateVTT, Segment } from '../caption-utils';
 
 describe('formatTimestamp', () => {
   it('formats SRT timestamps correctly', () => {
-    expect(formatTimestamp(75.5, 'srt')).toBe('00:01:15,500');
-    expect(formatTimestamp(3661.789, 'srt')).toBe('01:01:01,789');
+    assert.strictEqual(formatTimestamp(75.5, 'srt'), '00:01:15,500');
+    assert.strictEqual(formatTimestamp(3661.789, 'srt'), '01:01:01,789');
   });
 
   it('formats VTT timestamps correctly', () => {
-    expect(formatTimestamp(75.5, 'vtt')).toBe('00:01:15.500');
-    expect(formatTimestamp(3661.789, 'vtt')).toBe('01:01:01.789');
+    assert.strictEqual(formatTimestamp(75.5, 'vtt'), '00:01:15.500');
+    assert.strictEqual(formatTimestamp(3661.789, 'vtt'), '01:01:01.789');
   });
 });
 
@@ -20,13 +22,27 @@ describe('caption generators', () => {
 
   it('generates SRT correctly', () => {
     const expected =
-`1\n00:00:00,000 --> 00:00:01,000\nHello\n\n2\n00:00:01,000 --> 00:00:02,000\nWorld\n`;
-    expect(generateSRT(segments)).toBe(expected);
+`1
+00:00:00,000 --> 00:00:01,000
+Hello
+
+2
+00:00:01,000 --> 00:00:02,000
+World
+`;
+    assert.strictEqual(generateSRT(segments), expected);
   });
 
   it('generates VTT correctly', () => {
     const expected =
-`WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n\n00:00:01.000 --> 00:00:02.000\nWorld\n`;
-    expect(generateVTT(segments)).toBe(expected);
+`WEBVTT
+
+00:00:00.000 --> 00:00:01.000
+Hello
+
+00:00:01.000 --> 00:00:02.000
+World
+`;
+    assert.strictEqual(generateVTT(segments), expected);
   });
 });
