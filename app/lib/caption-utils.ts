@@ -5,7 +5,7 @@ export interface Segment {
     text: string;
   }
   
-  function formatTimestamp(seconds: number, format: 'srt' | 'vtt'): string {
+  export function formatTimestamp(seconds: number, format: 'srt' | 'vtt'): string {
     const hours = Math.floor(seconds / 3600);
     seconds %= 3600;
     const minutes = Math.floor(seconds / 60);
