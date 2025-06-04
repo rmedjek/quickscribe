@@ -114,6 +114,9 @@ const getUserFriendlyErrorMessage = (
   ) {
     return "The transcription service is currently experiencing issues. Please try again later. (Auth Error)";
   }
+  if (lowerError.includes("playlist")) {
+    return "Playlists aren’t supported yet — please provide a link to a single video.";
+  }
   if (
     lowerError.includes("groq api error (status: 413)") ||
     lowerError.includes("audio data is too large")

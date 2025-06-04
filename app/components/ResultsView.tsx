@@ -82,6 +82,12 @@ export default function ResultsView({
 
   return (
     <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-md sm:max-w-lg mx-auto text-slate-700">
+      <div className="text-center mb-6">
+        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">
+          QuickScribe
+        </h1>
+        <p className="text-sm text-slate-500 mt-1">Powered by Groq</p>
+      </div>
       {/* ---------------- gray stepper ----------------------- */}
       <GrayProgressStepper steps={STEPS} />
 
@@ -99,7 +105,9 @@ export default function ResultsView({
         {/* copy button */}
         <button
           onClick={copyText}
-          className="absolute right-3 top-3 p-1.5 rounded-md text-gray-600 hover:bg-slate-200 transition"
+          className="absolute right-3 top-3 p-1.5 rounded-md text-gray-600 bg-slate-200 
+          hover:bg-slate-300 focus-visible:ring-2 focus-visible:ring-offset-2 
+          focus-visible:ring-slate-400 transition"
           title="Copy text"
         >
           <ClipboardCopy size={18} />

@@ -73,7 +73,7 @@ function StageRow({stage}: {stage: StageDisplayData}) {
 
   /* choose bar class */
   const barClass = stage.isComplete
-    ? "bg-green-500"
+    ? "bg-gray-400"
     : stage.isIndeterminate
     ? "bg-orange-500 barberpole-stripes"
     : "bg-orange-500";
@@ -83,12 +83,12 @@ function StageRow({stage}: {stage: StageDisplayData}) {
       {/* ---- label row ---- */}
       <div className="flex items-center mb-1.5 text-sm font-medium">
         {stage.isComplete && (
-          <CheckCircle size={16} className="text-green-600 mr-2" />
+          <CheckCircle size={16} className="inline mr-2 mb-0.5 text-gray-500" />
         )}
         <span
           className={
             stage.isComplete
-              ? "text-green-600"
+              ? "text-gray-600"
               : stage.isActive
               ? "text-orange-600"
               : "text-slate-500"

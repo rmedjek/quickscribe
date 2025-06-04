@@ -18,6 +18,9 @@ const GROQ_AUDIO_LIMIT_BYTES = 25 * 1024 * 1024; // 25MB
 
 const execAsync = promisify(exec);
 
+const looksLikeYouTubePlaylist = (url: string) =>
+  /youtube\.com\/.*[?&]list=/.test(url) && !/[?&]v=/.test(url);
+
 function sanitizeFilename(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, '_').substring(0, 200); 
 }
@@ -33,6 +36,13 @@ export async function processVideoLinkAction(
 
   try {
     console.log("[VideoLinkAction] Preparing to download video/audio content...");
+
+    if (looksLikeYouTubePlaylist(videoUrl)) {
+      const msg =
+        "Whole YouTube playlists aren’t supported yet. Please use a single-video link.";
+      console.warn("[VideoLinkAction] Playlist detected – aborting.");
+      return { success: false, error: msg };
+    }
     
     const downloadedFileNameBase = `temp_downloaded_content_${uniqueId}`;
     let downloadedFileExtension = 'mp4'; // Default, will be input to FFmpeg
