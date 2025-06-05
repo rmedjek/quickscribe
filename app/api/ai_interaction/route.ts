@@ -1,51 +1,47 @@
-
 // app/api/ai_interaction/route.ts
-import { type NextRequest } from 'next/server';
-import { interactWithTranscriptAction, AIInteractionParams } from '@/actions/interactWithTranscriptAction'; // Adjust path if necessary
+import { type NextRequest, NextResponse } from 'next/server'; // Import NextResponse for cleaner JSON responses
+import { interactWithTranscriptAction, AIInteractionParams } from '@/actions/interactWithTranscriptAction';
 
-export const runtime = 'edge'; // Optional: Edge runtime can be faster for streaming
+// Remove or comment out the Edge runtime directive:
+// export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as AIInteractionParams;
 
+    // Validate required parameters
     if (!body.transcriptText || !body.taskType) {
-      return new Response(JSON.stringify({ error: 'Missing required parameters: transcriptText and taskType' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return NextResponse.json( // Use NextResponse for cleaner JSON responses
+        { success: false, error: 'Missing required parameters: transcriptText and taskType' },
+        { status: 400 }
+      );
     }
-    // For "custom_question", customPrompt is also expected in the body
     if (body.taskType === "custom_question" && (!body.customPrompt || body.customPrompt.trim() === "")) {
-        return new Response(JSON.stringify({ error: 'Missing customPrompt for custom_question task' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-        });
+      return NextResponse.json(
+        { success: false, error: 'Missing customPrompt for custom_question task' },
+        { status: 400 }
+      );
     }
-
 
     // Call the server action
-    // The server action itself now returns a StreamingTextResponse or a regular Response for errors
+    // interactWithTranscriptAction itself returns a Response object (either stream or JSON error)
     return await interactWithTranscriptAction(body);
 
   } catch (error: unknown) {
-    console.error('[API Route ai_interaction] Error:', error);
+    console.error('[API Route ai_interaction] Error processing request:', error);
     let errorMessage = 'An unexpected error occurred in the API route.';
-    if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
-        errorMessage = (error as { message: string }).message;
-    }
-    // Check if it's a known type of error from JSON parsing or else
-    if (typeof error === 'object' && error !== null && 'type' in error && (error as { type: unknown }).type === ' शरीर अपार्सनीय') { // Example of specific error check if req.json() fails
+
+    // Improved error message extraction
+    if (error instanceof SyntaxError && error.message.toLowerCase().includes("json")) {
         errorMessage = 'Invalid JSON in request body.';
-         return new Response(JSON.stringify({ error: errorMessage }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-        });
+        return NextResponse.json({ success: false, error: errorMessage }, { status: 400 });
+    } else if (error instanceof Error) {
+        errorMessage = error.message;
     }
 
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return NextResponse.json(
+        { success: false, error: errorMessage },
+        { status: 500 }
+    );
   }
 }

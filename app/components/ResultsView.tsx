@@ -1,7 +1,7 @@
 // app/components/ResultsView.tsx
 "use client";
 
-import React, {useState, useRef, useEffect} from "react"; // Added useRef, useEffect
+import React, {useState, useRef, useEffect} from "react";
 import {
   Waves,
   Settings,
@@ -22,9 +22,9 @@ import JSZip from "jszip";
 import {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
 import {TranscriptionMode} from "./ConfirmationView";
 import {
-  AIInteractionTaskType, // Only need the type now
-  AIInteractionParams, // And the params interface for the body
-} from "@/actions/interactWithTranscriptAction"; // Path to your action
+  AIInteractionTaskType,
+  AIInteractionParams,
+} from "@/actions/interactWithTranscriptAction";
 
 interface Step {
   id: string;
@@ -38,8 +38,7 @@ const STEPS: Step[] = [
 ];
 
 const modeLabel = (m: TranscriptionMode) => (m === "turbo" ? "Turbo" : "Chill");
-
-const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction"; // API route wrapper
+const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
 
 interface Props {
   transcriptionData: DetailedTranscriptionResult;
@@ -55,17 +54,14 @@ export default function ResultsView({
   const [copied, setCopied] = useState(false);
   const [zipping, setZipping] = useState(false);
 
-  // Unified AI State for streaming
   const [isAiTaskLoading, setIsAiTaskLoading] = useState(false);
   const [currentAiTask, setCurrentAiTask] =
     useState<AIInteractionTaskType | null>(null);
-  const [aiResultText, setAiResultText] = useState<string>(""); // Holds the streamed text
+  const [aiResultText, setAiResultText] = useState<string>("");
   const [aiError, setAiError] = useState<string | null>(null);
   const [customQuestion, setCustomQuestion] = useState("");
-
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Cleanup inflight request if component unmounts
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -104,10 +100,9 @@ export default function ResultsView({
     }
   };
 
-  // Unified handler for all AI tasks (now all streaming)
   const handleGenericAiStreamTask = async (
     taskType: AIInteractionTaskType,
-    questionForTask?: string // Specifically for custom_question
+    questionForTask?: string
   ) => {
     if (!transcriptionData.text) return;
     if (
@@ -122,11 +117,11 @@ export default function ResultsView({
 
     setIsAiTaskLoading(true);
     setCurrentAiTask(taskType);
-    setAiResultText(""); // Clear previous/current result
+    setAiResultText("");
     setAiError(null);
 
     if (abortControllerRef.current) {
-      abortControllerRef.current.abort(); // Abort previous request
+      abortControllerRef.current.abort();
     }
     abortControllerRef.current = new AbortController();
 
@@ -156,17 +151,12 @@ export default function ResultsView({
         }
         throw new Error(errorData.error || `API Error: ${response.status}`);
       }
-
-      if (!response.body) {
-        throw new Error("Response body is null.");
-      }
+      if (!response.body) throw new Error("Response body is null.");
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
-      // eslint-disable-next-line no-inner-declarations
       async function processStream() {
-        // eslint-disable-next-line no-constant-condition
         while (true) {
           try {
             const {done, value} = await reader.read();
@@ -175,61 +165,32 @@ export default function ResultsView({
             setAiResultText((prev) => prev + chunk);
           } catch (streamError: unknown) {
             console.error("Error reading stream:", streamError);
-            if (
-              typeof streamError === "object" &&
-              streamError !== null &&
-              "name" in streamError &&
-              (streamError as {name?: string}).name !== "AbortError"
-            ) {
+            const err = streamError as {name?: string; message?: string};
+            if (err.name !== "AbortError") {
               setAiError(
                 "Error reading stream: " +
-                  ((streamError as {message?: string}).message || "")
+                  (err.message || "Unknown stream error")
               );
-            } else if (
-              typeof streamError === "object" &&
-              streamError !== null &&
-              "name" in streamError &&
-              (streamError as {name?: string}).name === "AbortError"
-            ) {
+            } else {
               console.log("Stream reading aborted by client.");
             }
             break;
           }
         }
       }
-
-      await processStream(); // Wait for the stream processing to complete or error out
-
-      if (taskType === "custom_question" && !aiError) {
-        // Only clear question if it was Q&A and no error during stream
-        setCustomQuestion("");
-      }
+      await processStream();
+      if (taskType === "custom_question" && !aiError) setCustomQuestion("");
     } catch (error: unknown) {
       console.error(`Fetch error for AI task ${taskType}:`, error);
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "name" in error &&
-        (error as {name?: string}).name !== "AbortError"
-      ) {
-        setAiError(
-          (error as {message?: string}).message ||
-            `Failed to process ${taskType} task.`
-        );
-      } else if (
-        typeof error === "object" &&
-        error !== null &&
-        "name" in error &&
-        (error as {name?: string}).name === "AbortError"
-      ) {
-        setAiError(null); // Clear error if it was an intentional abort
-        setAiResultText(""); // Clear partial results on abort
+      const err = error as {name?: string; message?: string};
+      if (err.name !== "AbortError") {
+        setAiError(err.message || `Failed to process ${taskType} task.`);
       } else {
-        setAiError(`Failed to process ${taskType} task.`);
+        setAiError(null);
+        setAiResultText("");
       }
     } finally {
       setIsAiTaskLoading(false);
-      // setCurrentAiTask(null); // Optional: clear current task after completion or keep it
       abortControllerRef.current = null;
     }
   };
@@ -239,25 +200,36 @@ export default function ResultsView({
     handleGenericAiStreamTask("custom_question", customQuestion);
   };
 
+  // Determine title for the AI result box (only for when text HAS arrived or error)
+  let resultBoxStaticTitle = "";
+  if (!isAiTaskLoading && currentAiTask) {
+    // Only set static title if not actively loading (stream finished)
+    if (currentAiTask === "summarize")
+      resultBoxStaticTitle = "AI Generated Summary:";
+    else if (currentAiTask === "extract_key_points")
+      resultBoxStaticTitle = "AI Extracted Key Points:";
+    else if (currentAiTask === "custom_question")
+      resultBoxStaticTitle = "AI Answer:";
+  }
+
   return (
     <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700">
+      {/* Header, Stepper, Check Icon, Main Title - Unchanged */}
       <div className="text-center mb-6">
         <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">
           QuickScribe
         </h1>
         <p className="text-sm text-slate-500 mt-1">Powered by Groq</p>
       </div>
-
       <GrayProgressStepper steps={STEPS} />
-
       <div className="flex justify-center my-6">
         <CheckCircle2 size={72} className="text-gray-500" />
       </div>
-
       <h2 className="text-center text-xl font-semibold mb-6">
         Transcripts generated successfully!
       </h2>
 
+      {/* Transcript Display & Copy - Unchanged */}
       <div className="relative mb-8">
         <button
           onClick={copyText}
@@ -278,6 +250,7 @@ export default function ResultsView({
         </div>
       </div>
 
+      {/* Download Buttons - Unchanged */}
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <DownloadButton
           label="TXT"
@@ -311,6 +284,7 @@ export default function ResultsView({
 
       {/* --- AI Interaction Section --- */}
       <div className="my-8 py-6 border-t border-b border-slate-200 space-y-6">
+        {/* AI Quick Tools Buttons */}
         <div>
           <h3 className="text-lg font-semibold text-slate-800 mb-3 text-center">
             AI Quick Tools (Streaming)
@@ -356,12 +330,13 @@ export default function ResultsView({
           </div>
         </div>
 
+        {/* Ask a Question Form */}
         <div>
           <h3 className="text-lg font-semibold text-slate-800 mb-3 text-center">
             <HelpCircle
               size={20}
               className="inline mr-1 mb-0.5 text-slate-400"
-            />
+            />{" "}
             Ask a Question (Streaming)
           </h3>
           <form onSubmit={handleQuestionSubmitForm} className="space-y-3">
@@ -388,9 +363,8 @@ export default function ResultsView({
                 className="flex-shrink-0 bg-sky-600 hover:bg-sky-700 focus-visible:ring-sky-500"
                 size="md"
               >
-                {isAiTaskLoading && currentAiTask === "custom_question" ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
+                {/* The StyledButton's isLoading prop handles its internal spinner */}
+                {!(isAiTaskLoading && currentAiTask === "custom_question") && (
                   <Send size={18} />
                 )}
               </StyledButton>
@@ -399,43 +373,67 @@ export default function ResultsView({
         </div>
 
         {/* Display AI Result or Error (Unified Display Area) */}
-        {/* Show this area if loading, or if there's a result, or if there's an error */}
-        {(isAiTaskLoading || aiResultText || aiError) && (
+        {/* Show box if a task was just active (currentAiTask will be set), or if there's an error, or if there's result text */}
+        {(currentAiTask || aiResultText || (aiError && !isAiTaskLoading)) && (
           <div
-            className={`mt-6 p-4 border rounded-lg text-sm 
-            ${
-              aiError
-                ? "border-red-300 bg-red-50 text-red-700 overflow-auto" // Added overflow-auto here
+            className={`mt-6 p-4 border rounded-lg text-sm ${
+              aiError && !isAiTaskLoading
+                ? "border-red-300 bg-red-50 text-red-700"
                 : "border-sky-200 bg-sky-50 text-slate-700"
             }`}
           >
-            {aiError && !isAiTaskLoading ? ( // Only show error if not actively loading something else
+            {aiError && !isAiTaskLoading ? (
               <p className="break-words">
                 <strong>Error:</strong> {aiError}
               </p>
             ) : (
               <>
-                <h4 className="font-semibold mb-2 text-sky-700">
-                  {currentAiTask === "summarize" && "AI Generated Summary:"}
-                  {currentAiTask === "extract_key_points" &&
-                    "AI Extracted Key Points:"}
-                  {currentAiTask === "custom_question" && "AI Answer:"}
-                  {!currentAiTask &&
-                    isAiTaskLoading &&
-                    "Processing AI Request..."}{" "}
-                  {/* Fallback title when loading but task not set yet */}
-                </h4>
-                <div className="whitespace-pre-wrap break-words">
-                  {aiResultText}
-                </div>
-                {isAiTaskLoading && (
-                  <Loader2
-                    size={16}
-                    className="inline-block animate-spin ml-2 my-1 text-sky-600"
-                  />
+                {/* Title for the box: Only show if not loading initially OR if text has arrived */}
+                {resultBoxStaticTitle && (
+                  <h4 className="font-semibold mb-2 text-sky-700">
+                    {resultBoxStaticTitle}
+                  </h4>
                 )}
 
-                {/* Show copy button only when not loading and there's actual result text */}
+                {/* Initial Loading state for non-Q&A tasks, OR Q&A if button spinner isn't enough */}
+                {isAiTaskLoading &&
+                  !aiResultText &&
+                  currentAiTask &&
+                  currentAiTask !== "custom_question" && (
+                    <div className="flex items-center justify-center py-1">
+                      <Loader2
+                        size={18}
+                        className="animate-spin text-sky-600 mr-2"
+                      />
+                      Processing AI Request...
+                    </div>
+                  )}
+
+                {/* Result Text - always show if it exists */}
+                {aiResultText && (
+                  <div
+                    className={`whitespace-pre-wrap break-words ${
+                      isAiTaskLoading &&
+                      !aiResultText &&
+                      currentAiTask !== "custom_question"
+                        ? ""
+                        : "mt-1"
+                    }`}
+                  >
+                    {aiResultText}
+                    {/* Subtle ping only if still loading more text AND text has started */}
+                    {isAiTaskLoading && aiResultText && (
+                      <span className="inline-block animate-ping w-1.5 h-1.5 bg-sky-500 rounded-full ml-1"></span>
+                    )}
+                  </div>
+                )}
+
+                {/* If it was a Q&A task, and it's loading, and no text yet, the button spinner is the main indicator.
+                    We might not need anything extra here unless the button spinner is not visible enough.
+                    The box will be empty until text streams in.
+                */}
+
+                {/* Copy Button */}
                 {!isAiTaskLoading && aiResultText && !aiError && (
                   <div className="mt-3 flex justify-end">
                     <StyledButton
@@ -456,6 +454,7 @@ export default function ResultsView({
         )}
       </div>
 
+      {/* Footer Buttons - Unchanged */}
       <div className="flex justify-center mb-6">
         <StyledButton
           onClick={zipAll}
@@ -468,7 +467,6 @@ export default function ResultsView({
           {zipping ? "Zipping…" : "Download All (.zip)"}
         </StyledButton>
       </div>
-
       <StyledButton
         onClick={onRestart}
         variant="secondary"
@@ -477,7 +475,6 @@ export default function ResultsView({
       >
         New Transcription
       </StyledButton>
-
       <p className="text-xs text-slate-500 text-center">
         Transcription completed using <strong>{modeLabel(mode)}</strong> mode.
       </p>
