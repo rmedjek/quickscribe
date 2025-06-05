@@ -1,30 +1,39 @@
+// types/ffmpeg.d.ts
+
 declare module '@ffmpeg/ffmpeg' {
-  // Define the FFmpeg class constructor and its instance methods
+  // Define specific types for event data
+  export interface FFmpegLogData {
+    type: string; // Typically 'stdout' or 'stderr' for FFmpeg logs
+    message: string;
+  }
+
+  export interface FFmpegProgressData {
+    progress: number; // A value between 0 and 1
+    time?: number;    // Current time in seconds, if available (often related to output duration)
+  }
+
   export class FFmpeg {
-    constructor(options?: unknown); // Keep options flexible or define them if known
+    constructor(options?: unknown);
 
     load(options?: {
       coreURL?: string;
       wasmURL?: string;
-     // workerURL?: string;
-      // Add other specific load options if documented for this version
+      // workerURL?: string; // If you ever use the multi-threaded version
     }): Promise<void>;
 
-    on(event: 'log' | 'progress', callback: (data: { type: string; message: string } | { progress: number; time?: number }) => void): void;
+    // Function overloads for the .on() method for better type inference
+    on(event: 'log', callback: (data: FFmpegLogData) => void): void;
+    on(event: 'progress', callback: (data: FFmpegProgressData) => void): void;
+    // Fallback for any other event types, though 'log' and 'progress' are primary
+    // on(event: string, callback: (data: any) => void): void;
+
     writeFile(path: string, data: Uint8Array | string | ArrayBuffer): Promise<void>;
     readFile(path: string, encoding?: string): Promise<Uint8Array>;
     exec(args: string[]): Promise<number>; // Returns exit code
-    terminate?(): void; // Optional, might not always be present or needed
-    // For file system operations like unlinking files
-    // The exact structure of FS can vary; this is a general representation
-    FS?(method: 'unlink' | 'readFile' | 'writeFile' | string, ...args: unknown[]): unknown; 
-    isLoaded?(): boolean; // Optional, some versions provide this
+    terminate?(): void;
+    FS?(method: 'unlink' | 'readFile' | 'writeFile' | string, ...args: unknown[]): unknown;
+    isLoaded?(): boolean;
   }
-
-  // You can also export FFFSType if you plan to use it,
-  // but it's not critical for the core ffmpeg functionality.
-  // export enum FFFSType { /* ... values if known ... */ }
-  // For now, focusing on FFmpeg class.
 }
 
 declare module '@ffmpeg/util' {

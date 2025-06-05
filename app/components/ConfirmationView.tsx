@@ -1,7 +1,7 @@
 // app/components/ConfirmationView.tsx
 "use client";
 
-import React, {useState} from "react";
+import React, {useState} from "react"; // Removed useEffect as it wasn't used
 import {
   FileText,
   AlertTriangle,
@@ -11,26 +11,30 @@ import {
   Snowflake,
   Settings,
   Waves,
-} from "lucide-react"; // Added more icons
+  Music, // Icon for Audio
+  Video, // Icon for Video
+} from "lucide-react";
 import StyledButton from "./StyledButton";
-import ProgressStepper from "./ProgressStepper";
+import ProgressStepper, {Step as AppProgressStep} from "./ProgressStepper"; // Use existing Step type
+import {SelectedInputType} from "@/app/page"; // Import the type from page.tsx
 
-const MAX_CLIENT_SIZE_BYTES = 200 * 1024 * 1024;
+const MAX_CLIENT_SIZE_BYTES = 200 * 1024 * 1024; // 200MB example
 export type TranscriptionMode = "chill" | "turbo";
 
 interface ConfirmationViewProps {
   file: File | null;
   link: string | null;
+  inputType: SelectedInputType | null; // NEW PROP to distinguish audio/video/link
   onConfirm: (
     processingPath: "client" | "server",
     mode: TranscriptionMode
   ) => void;
   onCancel: () => void;
-  currentStepIdForStepper?: string; // e.g., 'settings'
 }
 
 // Define Stepper steps (can also be passed as props if they vary)
-const APP_STEPS = [
+const APP_STEPS: AppProgressStep[] = [
+  // Renamed Step to AppProgressStep to avoid conflict if needed
   {id: "configure", name: "Configure", icon: Settings},
   {id: "process", name: "Process Audio", icon: Waves},
   {id: "transcribe", name: "Get Transcripts", icon: FileText},
@@ -39,14 +43,15 @@ const APP_STEPS = [
 const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   file,
   link,
+  inputType, // Destructure and use the new prop
   onConfirm,
   onCancel,
 }) => {
   const isFileProvided = !!file;
-  const isLinkProvided = !!link && !file;
+  const isLinkProvided = !!link && !file; // This logic is fine
   const isLargeFile = isFileProvided && file.size > MAX_CLIENT_SIZE_BYTES;
 
-  const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("chill"); // Default to chill
+  const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("chill");
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 Bytes";
@@ -54,6 +59,28 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
     const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
+  const getInputTypeDisplayName = () => {
+    if (isLinkProvided) return "Video Link";
+    if (isFileProvided) {
+      if (inputType === "audio") return "Audio File";
+      if (inputType === "video") return "Video File";
+      return "File"; // Fallback
+    }
+    return "Input";
+  };
+
+  const getInputIcon = () => {
+    if (isLinkProvided)
+      return <Video size={16} className="inline mr-1.5 text-slate-500" />;
+    if (isFileProvided) {
+      if (inputType === "audio")
+        return <Music size={16} className="inline mr-1.5 text-slate-500" />;
+      if (inputType === "video")
+        return <Video size={16} className="inline mr-1.5 text-slate-500" />;
+    }
+    return <FileText size={16} className="inline mr-1.5 text-slate-500" />;
   };
 
   return (
@@ -68,22 +95,25 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
       <ProgressStepper steps={APP_STEPS} currentStepId="configure" />
 
       <div className="mb-6 p-4 border border-slate-200 rounded-lg bg-slate-50 text-sm">
-        <h3 className="text-base font-semibold mb-2 text-slate-700">
-          Selected Input:
+        <h3 className="text-base font-semibold mb-2 text-slate-700 flex items-center">
+          {getInputIcon()} Selected {getInputTypeDisplayName()}:
         </h3>
         {isFileProvided && file && (
           <>
-            <p className="truncate">
-              <strong>File:</strong> {file.name}
+            <p className="truncate ml-1">
+              <strong>Name:</strong> {file.name}
             </p>
-            <p>
+            <p className="ml-1">
+              <strong>Type:</strong> {file.type}
+            </p>
+            <p className="ml-1">
               <strong>Size:</strong> {formatFileSize(file.size)}
             </p>
           </>
         )}
         {isLinkProvided && (
-          <p className="break-all">
-            <strong>Link:</strong> {link}
+          <p className="break-all ml-1">
+            <strong>URL:</strong> {link}
           </p>
         )}
       </div>
@@ -91,6 +121,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
       {/* Chill/Turbo Toggle & Mode Cards (only if file or link is provided) */}
       {(isFileProvided || isLinkProvided) && (
         <>
+          {/* ... (Chill/Turbo toggle and Mode Cards remain the same) ... */}
           <div className="mb-6 flex items-center justify-center space-x-2">
             <span
               className={`px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
@@ -142,7 +173,6 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                 onClick={() => setSelectedMode("chill")}
               >
                 <div className="flex items-center mb-1">
-                  {" "}
                   <Snowflake
                     size={20}
                     className={`mr-2 ${
@@ -150,8 +180,8 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                         ? "text-sky-600"
                         : "text-slate-500"
                     }`}
-                  />{" "}
-                  <h4 className="font-semibold text-slate-700">Chill Mode</h4>{" "}
+                  />
+                  <h4 className="font-semibold text-slate-700">Chill Mode</h4>
                 </div>
                 <p className="text-xs text-slate-500">
                   Efficient & fast with Distil-Whisper. Good for most cases.
@@ -166,7 +196,6 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                 onClick={() => setSelectedMode("turbo")}
               >
                 <div className="flex items-center mb-1">
-                  {" "}
                   <Zap
                     size={20}
                     className={`mr-2 ${
@@ -174,8 +203,8 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                         ? "text-orange-600"
                         : "text-slate-500"
                     }`}
-                  />{" "}
-                  <h4 className="font-semibold text-slate-700">Turbo Mode</h4>{" "}
+                  />
+                  <h4 className="font-semibold text-slate-700">Turbo Mode</h4>
                 </div>
                 <p className="text-xs text-slate-500">
                   Highest accuracy with Whisper Large v3. Best for critical
@@ -187,8 +216,8 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
         </>
       )}
 
-      {/* --- Action Buttons based on input type --- */}
-      {/* Case 1: Link is provided */}
+      {/* --- Action Buttons --- */}
+      {/* Case 1: Link is provided (always server processing) */}
       {isLinkProvided && (
         <StyledButton
           onClick={() => onConfirm("server", selectedMode)}
@@ -200,65 +229,88 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
         </StyledButton>
       )}
 
-      {/* Case 2: File is provided AND it's NOT large */}
-      {isFileProvided && !isLargeFile && (
-        <StyledButton
-          onClick={() => onConfirm("client", selectedMode)}
-          variant="primary"
-          size="lg"
-          className="w-full bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
-        >
-          Generate Transcripts (In Browser)
-        </StyledButton>
-      )}
-
-      {/* Case 3: File is provided AND it IS large (offer choice and show warning) */}
-      {isFileProvided && isLargeFile && (
+      {/* Case 2: File is provided */}
+      {isFileProvided && (
         <>
-          <div className="mb-4 p-3 border border-amber-300 rounded-lg bg-amber-50 text-amber-600 text-xs flex items-center">
-            <AlertTriangle
-              size={18}
-              className="text-amber-500 mr-2 flex-shrink-0"
-            />
-            <span>
-              Large file ({file ? formatFileSize(file.size) : "N/A"}). Choose a
-              processing method:
-            </span>
-          </div>
+          {isLargeFile && (
+            <div className="mb-4 p-3 border border-amber-300 rounded-lg bg-amber-50 text-amber-600 text-xs flex items-center">
+              <AlertTriangle
+                size={18}
+                className="text-amber-500 mr-2 flex-shrink-0"
+              />
+              <span>
+                Large file ({file ? formatFileSize(file.size) : "N/A"}). Server
+                processing is recommended.
+              </span>
+            </div>
+          )}
+
           <div className="space-y-3">
+            {/* Server Processing Button */}
             <StyledButton
               onClick={() => onConfirm("server", selectedMode)}
-              variant="primary"
+              // For large files OR audio files, server is often preferred/safer.
+              // Make server primary if large, or if it's audio (unless small audio where client is also fine).
+              variant={
+                isLargeFile || inputType === "audio" ? "primary" : "secondary"
+              }
               size="lg"
-              className="w-full bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400 group"
+              className={`w-full group ${
+                isLargeFile || inputType === "audio"
+                  ? "bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
+                  : ""
+              }`}
             >
               <Server size={20} className="mr-2" />
-              Process on Server (Recommended for Large Files)
+              Process on Server
+              {isLargeFile && " (Recommended)"}
+              {inputType === "audio" && !isLargeFile && " (Audio File)"}
             </StyledButton>
-            <StyledButton
-              onClick={() => onConfirm("client", selectedMode)}
-              variant="secondary"
-              size="lg"
-              className="w-full group"
-            >
-              <CloudCog size={20} className="mr-2" />
-              Process in Browser (May be Slow)
-            </StyledButton>
+
+            {/* Client Processing Button - show unless it's a large audio file where server is heavily pushed */}
+            {!(isLargeFile && inputType === "audio") && (
+              <StyledButton
+                onClick={() => onConfirm("client", selectedMode)}
+                variant={
+                  !isLargeFile && inputType !== "audio"
+                    ? "primary"
+                    : "secondary"
+                } // Primary if small video. Secondary otherwise.
+                size="lg"
+                className="w-full group"
+              >
+                <CloudCog size={20} className="mr-2" />
+                Process in Browser
+                {isLargeFile &&
+                  inputType === "video" &&
+                  " (May be Slow for Large Video)"}
+                {!isLargeFile && inputType === "audio" && " (Audio File)"}
+              </StyledButton>
+            )}
           </div>
-          <p className="text-xs mt-3 text-slate-500 text-center">
-            Server processing is faster for large files. Your file is uploaded
-            securely and deleted after processing.
-          </p>
+
+          {isLargeFile && (
+            <p className="text-xs mt-3 text-slate-500 text-center">
+              Server processing is faster and more reliable for large files.
+              Your file is uploaded securely and deleted after processing.
+            </p>
+          )}
+          {!isLargeFile && inputType === "audio" && (
+            <p className="text-xs mt-3 text-slate-500 text-center">
+              For audio files, browser processing sends the file directly for
+              transcription (may convert to Opus if needed).
+            </p>
+          )}
         </>
       )}
 
       <div className="text-center mt-6">
-        <p className="text-xs text-slate-400">{/* Version X.Y.Z */}</p>
+        {/* <p className="text-xs text-slate-400">Version X.Y.Z</p> */}
       </div>
       <StyledButton
         onClick={onCancel}
         variant="ghost"
-        className="w-full mt-2 text-slate-600"
+        className="w-full mt-4 text-slate-600" // Added mt-4
       >
         Back / Change Input
       </StyledButton>

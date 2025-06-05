@@ -3,16 +3,17 @@
 
 import { useState, useCallback } from "react";
 import {
-  extractAudioAction,
+  extractAudioAction, // Used for video files
   ExtractAudioResponse,
 } from "@/actions/extractAudioAction";
-import { transcribeAudioAction } from "@/actions/transcribeAudioAction";
+import {
+    transcribeAudioAction, // Used for all transcriptions
+    DetailedTranscriptionResult
+} from "@/actions/transcribeAudioAction";
 import { TranscriptionMode } from "@/components/ConfirmationView";
 import { StageDisplayData } from "@/components/ProcessingView";
-import { DetailedTranscriptionResult } from "@/actions/transcribeAudioAction";
 import { useStageUpdater } from "./useStageUpdater";
 
-/* ------------ props -------------------------------------------- */
 interface Props {
   onProcessingComplete: (d: DetailedTranscriptionResult) => void;
   onError: (msg: string, fn?: string, sizeMB?: string) => void;
@@ -20,11 +21,9 @@ interface Props {
   onStagesUpdate: (
     s: StageDisplayData[] | ((p: StageDisplayData[]) => StageDisplayData[])
   ) => void;
-  /** advance stepper ("configure" | "process" | "transcribe") */
   onStepChange?: (id: "configure" | "process" | "transcribe") => void;
 }
 
-/* ================================================================= */
 export function useServerFileUploadProcessor({
   onProcessingComplete,
   onError,
@@ -35,105 +34,86 @@ export function useServerFileUploadProcessor({
   const [busy, setBusy] = useState(false);
   const patch = useStageUpdater(onStagesUpdate);
 
-  /* ---------------------------------------------------------------- */
   const processFile = useCallback(
-    async (file: File, mode: TranscriptionMode) => {
+    async (file: File, mode: TranscriptionMode, isDirectAudio: boolean) => {
       setBusy(true);
-      onStepChange?.("process");
+      onStepChange?.("process"); // Move to "Process Audio" step
 
-      /* ---------------------- initialise stages -------------------- */
-      onStagesUpdate([
-        {
-          name: "extract",
-          label: "Uploading & Processing Audio",
-          progress: 0,
-          isActive: true,
-          isComplete: false,
-          isIndeterminate: true,
-        },
-        {
-          name: "groq",
-          label: "AI Transcribing…",
-          progress: 0,
-          isActive: false,
-          isComplete: false,
-          isIndeterminate: false,
-          subText: "",
-        },
-      ]);
+      let audioBlobForGroq: Blob;
+      const originalFileName = file.name;
+      const originalFileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      let audioFileNameForGroq = file.name; // Default to original, override if extracted
 
-      /* ---------------------- phase 1: extract -------------------- */
-      onStatusUpdate("Uploading & extracting…");
-      const fd = new FormData();
-      fd.append("videoFile", file);
+      if (isDirectAudio) {
+        console.log("[ServerProc] Processing direct audio file on server:", originalFileName);
+        onStagesUpdate([ // Simplified stages for direct audio
+          { name: "upload_audio", label: "Uploading Audio", progress: 0, isActive: true, isComplete: false, isIndeterminate: true, subText: "Preparing audio for transcription..." },
+          { name: "groq", label: "AI Transcribing…", progress: 0, isActive: false, isComplete: false, isIndeterminate: false, subText: ""},
+        ]);
+        onStatusUpdate("Uploading audio for transcription…");
 
-      const ex = (await extractAudioAction(fd)) as ExtractAudioResponse;
+        // The file itself is the audio blob we need for Groq.
+        // No server-side FFmpeg extraction needed.
+        audioBlobForGroq = file;
+        // No specific action needed for "upload_audio" progress here as it's just passing the file object.
+        // We can mark it complete before calling Groq.
+        patch("upload_audio", { isIndeterminate: false, progress: 1, isActive: false, isComplete: true, label: "Audio ready for transcription" });
 
-      if (!ex.success) {
-        onError(ex.error, file.name);
-        setBusy(false);
-        return;
+      } else { // It's a video file, use existing server-side FFmpeg extraction logic
+        console.log("[ServerProc] Extracting audio from video file on server:", originalFileName);
+        onStagesUpdate([
+          { name: "extract_server", label: "Uploading & Extracting Audio (Server)", progress: 0, isActive: true, isComplete: false, isIndeterminate: true, subText: "Server is processing video..." },
+          { name: "groq", label: "AI Transcribing…", progress: 0, isActive: false, isComplete: false, isIndeterminate: false, subText: "" },
+        ]);
+        onStatusUpdate("Server is extracting audio from video…");
+
+        const formDataForExtraction = new FormData();
+        formDataForExtraction.append("videoFile", file);
+
+        const extractionResult = (await extractAudioAction(formDataForExtraction)) as ExtractAudioResponse;
+
+        if (!extractionResult.success) {
+          onError(extractionResult.error, originalFileName, originalFileSizeMB);
+          setBusy(false);
+          return;
+        }
+
+        // Convert base64 Opus audio from server back to a Blob
+        const byteString = atob(extractionResult.audioBase64);
+        const ia = new Uint8Array(byteString.length);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        audioBlobForGroq = new Blob([ia], { type: "audio/opus" }); // Extracted audio is always Opus
+        audioFileNameForGroq = extractionResult.fileName; // Usually "audio.opus"
+
+        patch("extract_server", { isIndeterminate: false, progress: 1, isActive: false, isComplete: true, label: "Audio Extracted (Server)" });
       }
 
-      patch("extract", {
-        isIndeterminate: false,
-        progress: 1,
-        isActive: false,
-        isComplete: true,
-      });
-
-      /* 🔔 move stepper from “process” -> “transcribe” */
-      onStepChange?.("transcribe");
-
-      /* ---------------------- phase 2: Groq ----------------------- */
-      const modelName =
-        mode === "turbo"
-          ? "Whisper Large v3"
-          : "Distil-Whisper Large-v3-en";
-
+      // --- Common part: Groq Transcription ---
+      onStepChange?.("transcribe"); // Move to "Get Transcripts" step
+      const modelName = mode === "turbo" ? "Whisper Large v3" : "Distil-Whisper Large-v3-en";
       onStatusUpdate("AI is transcribing your audio…");
-      patch("groq", {
-        isActive: true,
-        isIndeterminate: true,
-        subText: `Processing using Groq's ${modelName} model`,
-      });
+      patch("groq", { isActive: true, isIndeterminate: true, subText: `Processing using Groq's ${modelName} model` });
 
-      const bytes = Uint8Array.from(
-        atob(ex.audioBase64),
-        (c) => c.charCodeAt(0)
-      );
-      const blob = new Blob([bytes], { type: "audio/opus" });
-      const fd2 = new FormData();
-      fd2.append("audioBlob", blob, ex.fileName);
+      const formDataForTranscription = new FormData();
+      formDataForTranscription.append("audioBlob", audioBlobForGroq, audioFileNameForGroq);
 
-      const tr = await transcribeAudioAction(fd2, mode);
+      console.log(`[ServerProc] Sending audio to transcribeAudioAction. Type: ${audioBlobForGroq.type}, Name: ${audioFileNameForGroq}`);
+      const transcriptionResult = await transcribeAudioAction(formDataForTranscription, mode);
 
-      if (!tr.success || !tr.data) {
+      if (!transcriptionResult.success || !transcriptionResult.data) {
         patch("groq", { isActive: false, isIndeterminate: false });
-        onError(tr.error ?? "Transcription failed", file.name);
+        onError(transcriptionResult.error ?? "Transcription failed", audioFileNameForGroq, (audioBlobForGroq.size / (1024*1024)).toFixed(2));
         setBusy(false);
         return;
       }
 
-      patch("groq", {
-        isIndeterminate: false,
-        progress: 1,
-        isActive: false,
-        isComplete: true,
-        subText: `Processed with Groq's ${modelName} model`,
-      });
-
-      onProcessingComplete(tr.data);
+      patch("groq", { isIndeterminate: false, progress: 1, isActive: false, isComplete: true, subText: `Processed with Groq's ${modelName} model` });
+      onProcessingComplete(transcriptionResult.data);
       setBusy(false);
     },
-    [
-      onError,
-      onProcessingComplete,
-      onStatusUpdate,
-      onStagesUpdate,
-      patch,
-      onStepChange,
-    ]
+    [onError, onProcessingComplete, onStatusUpdate, onStagesUpdate, patch, onStepChange]
   );
 
   return { processFile, isProcessing: busy };

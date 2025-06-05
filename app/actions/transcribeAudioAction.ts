@@ -93,18 +93,29 @@ export async function transcribeAudioAction(
 
   } catch (error) {
     console.error("[Server Action] Error during Groq API call:", error);
-    if (error instanceof Groq.APIConnectionTimeoutError) { // Specific timeout error
-        return { success: false, error: `Groq API Error: Connection timed out after ${GROQ_REQUEST_TIMEOUT_MS / 1000}s. The audio file might be too large or processing took too long.` };
-    } else if (error instanceof Groq.APIError) { 
-      let errorMessage = `Groq API Error`;
-      if (error.status) { errorMessage += ` (Status: ${error.status})`; }
-      errorMessage += `: ${error.message}`;
-      console.error("[Server Action] Full Groq.APIError object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
-      return { success: false, error: errorMessage };
+    let userFriendlyError = `An unexpected error occurred during transcription: ${error instanceof Error ? error.message : String(error)}`;
+    
+    if (error instanceof Groq.APIError && error.status === 503) {
+      userFriendlyError =
+      "Groq’s transcription service is temporarily unavailable (503). " +
+      "Please wait a moment and try again.";
     }
-    return { 
-        success: false, 
-        error: `An unexpected error occurred during transcription: ${error instanceof Error ? error.message : String(error)}` 
-    };
+
+   if (error instanceof Groq.APIConnectionTimeoutError) {
+        userFriendlyError = `Groq API Error: Connection timed out after ${GROQ_REQUEST_TIMEOUT_MS / 1000}s. The audio file might be too large or processing took too long.`;
+    } else if (error instanceof Groq.APIError) {
+      // Check for specific status codes or error types if available
+      // For ECONNRESET, the error.cause might have more info
+      if (error.message && error.message.toLowerCase().includes('connection error') && error.cause && (error.cause as any).code === 'ECONNRESET') {
+         userFriendlyError = `A connection error (ECONNRESET) occurred while communicating with the transcription service. This often happens with very large audio files or network interruptions. Please try a smaller file or check your connection. File size: ${audioBlobSizeMB} MB.`;
+      } else {
+        userFriendlyError = `Groq API Error (Status: ${error.status || 'N/A'}): ${error.message}`;
+      }
+      console.error("[Server Action] Full Groq.APIError object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    } else if (error instanceof Error && (error as any).code === 'ECONNRESET') { // Catching ECONNRESET if not wrapped by Groq.APIError
+        userFriendlyError = `A direct connection error (ECONNRESET) occurred. This often happens with very large audio files. Please try a smaller file. File size: ${audioBlobSizeMB} MB.`;
+    }
+
+    return { success: false, error: userFriendlyError };
   }
 }
