@@ -6,7 +6,7 @@ interface StyledButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
   variant?: "primary" | "secondary" | "danger" | "ghost";
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "icon";
   isLoading?: boolean;
   // Add other props like 'iconLeft', 'iconRight' if needed later
 }
@@ -38,26 +38,29 @@ const StyledButton: React.FC<StyledButtonProps> = ({
     sm: "px-3 py-1.5 text-sm",
     md: "px-4 py-2 text-base",
     lg: "px-6 py-3 text-lg",
+    icon: "p-2.5",
   };
 
   const loadingStyles = isLoading ? "opacity-75 cursor-not-allowed" : "";
 
   return (
     <button
-      type="button" // Default to type="button" unless overridden
+      type="button"
       className={clsx(
         baseStyles,
         variantStyles[variant],
         sizeStyles[size],
         loadingStyles,
-        className // Allow overriding with custom classes
+        className
       )}
       disabled={disabled || isLoading}
       {...props}
     >
       {isLoading && (
         <svg
-          className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" // Adjust color if needed for variants
+          className={`animate-spin h-5 w-5 ${
+            children ? "-ml-1 mr-2" : ""
+          } text-white`}
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
           viewBox="0 0 24 24"

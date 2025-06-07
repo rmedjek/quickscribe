@@ -9,10 +9,11 @@ const nextConfig: NextConfig = {
       bodySizeLimit: serverActionBodyLimit as SizeLimit,
     },
   },
-  webpack(config) { 
+  webpack(config) {
     config.experiments = {
       ...config.experiments,
       asyncWebAssembly: true,
+      // layers: true, // Optional, try without first
     };
     return config;
   },
