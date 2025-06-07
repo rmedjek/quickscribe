@@ -15,7 +15,10 @@ import {
   HelpCircle,
   Send,
   ClipboardCheck,
-  AlertCircle, // Added for Action Items
+  AlertCircle,
+  ChevronDown, // For accordion
+  ChevronUp, // For accordion
+  XCircle, // For clearing an individual result
 } from "lucide-react";
 import StyledButton from "./StyledButton";
 import DownloadButton from "./DownloadButton";
@@ -38,8 +41,19 @@ const STEPS: Step[] = [
   {id: "process", name: "Process Audio", icon: Waves},
   {id: "transcribe", name: "Get Transcripts", icon: FileText},
 ];
+
 const modeLabel = (m: TranscriptionMode) => (m === "turbo" ? "Turbo" : "Chill");
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
+
+// Define the structure for a single AI result item
+interface AiResultItem {
+  id: string;
+  taskType: AIInteractionTaskType;
+  text: string;
+  wasTruncated: boolean;
+  error?: string;
+}
+
 interface Props {
   transcriptionData: DetailedTranscriptionResult;
   mode: TranscriptionMode;
@@ -51,17 +65,20 @@ export default function ResultsView({
   mode,
   onRestart,
 }: Props) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(false); // For main transcript copy
   const [zipping, setZipping] = useState(false);
 
-  const [isAiTaskLoading, setIsAiTaskLoading] = useState(false);
-  const [currentAiTask, setCurrentAiTask] =
-    useState<AIInteractionTaskType | null>(null);
-  const [aiResultText, setAiResultText] = useState<string>("");
-  const [aiError, setAiError] = useState<string | null>(null);
+  // --- MODIFIED AI State for Multiple Results ---
+  const [activeAiTask, setActiveAiTask] =
+    useState<AIInteractionTaskType | null>(null); // Task currently being processed/streamed
+  const [streamingAiText, setStreamingAiText] = useState<string>(""); // Text for the currently streaming task
+  const [isStreamingAi, setIsStreamingAi] = useState(false); // Global flag if any AI task is actively loading/streaming
+  const [aiResults, setAiResults] = useState<AiResultItem[]>([]); // Array to store all completed AI results
+  const [globalAiError, setGlobalAiError] = useState<string | null>(null); // For general errors before streaming or fetch failures
+  const [expandedResultId, setExpandedResultId] = useState<string | null>(null); // ID of the currently expanded accordion item
+
   const [customQuestion, setCustomQuestion] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
-  const [showTruncationNote, setShowTruncationNote] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -101,6 +118,24 @@ export default function ResultsView({
     }
   };
 
+  const getTaskDisplayName = (taskType: AIInteractionTaskType): string => {
+    switch (taskType) {
+      case "summarize":
+        return "Summary";
+      case "extract_key_points":
+        return "Key Points";
+      case "custom_question":
+        return "Q&A Answer";
+      case "extract_action_items":
+        return "Action Items";
+      default:
+        console.warn(
+          `[ResultsView] Encountered an unhandled AIInteractionTaskType in getTaskDisplayName: ${taskType}`
+        );
+        return "AI Generated Result"; // Provide a generic fallback
+    }
+  };
+
   const handleGenericAiStreamTask = async (
     taskType: AIInteractionTaskType,
     questionForTask?: string
@@ -110,9 +145,7 @@ export default function ResultsView({
       taskType === "custom_question" &&
       (!questionForTask || questionForTask.trim() === "")
     ) {
-      setAiError("Please enter a question.");
-      setAiResultText("");
-      setCurrentAiTask(null);
+      setGlobalAiError("Please enter a question."); // Use global error for pre-flight validation
       return;
     }
 
@@ -121,11 +154,11 @@ export default function ResultsView({
     }
     abortControllerRef.current = new AbortController();
 
-    setIsAiTaskLoading(true);
-    setCurrentAiTask(taskType);
-    setAiResultText("");
-    setAiError(null);
-    setShowTruncationNote(false); // Reset for new task
+    setIsStreamingAi(true);
+    setActiveAiTask(taskType);
+    setStreamingAiText("");
+    setGlobalAiError(null);
+    let taskWasTruncated = false;
 
     const body: AIInteractionParams = {
       transcriptText: transcriptionData.text,
@@ -142,10 +175,8 @@ export default function ResultsView({
         signal: abortControllerRef.current.signal,
       });
 
-      // Check for custom header AFTER response, regardless of ok status initially
       if (response.headers.get("X-Content-Truncated") === "true") {
-        setShowTruncationNote(true);
-        console.log("[ResultsView] Received X-Content-Truncated header.");
+        taskWasTruncated = true;
       }
 
       if (!response.ok) {
@@ -163,62 +194,62 @@ export default function ResultsView({
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      async function processStream() {
-        while (true) {
-          // Check for abort signal inside the loop if reads are long
-          if (abortControllerRef.current?.signal.aborted) {
-            console.log("Stream processing loop aborted.");
-            setAiResultText(
-              (prev) => prev + "\n[Stream aborted by new request]"
-            ); // Optional feedback
-            break;
+      let accumulatedText = "";
+
+      while (true) {
+        if (abortControllerRef.current?.signal.aborted) {
+          console.log("Stream processing loop aborted for task:", taskType);
+          throw new Error("STREAM_ABORTED_BY_NEW_REQUEST");
+        }
+        try {
+          const {done, value} = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, {stream: true});
+          accumulatedText += chunk;
+          setStreamingAiText(accumulatedText);
+        } catch (streamError: unknown) {
+          const err = streamError as {name?: string; message?: string};
+          if (err.name !== "AbortError") {
+            setGlobalAiError(
+              "Error reading stream: " + (err.message || "Unknown stream error")
+            );
+          } else {
+            console.log("Stream reading aborted by client/controller.");
           }
-          try {
-            const {done, value} = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, {stream: true});
-            setAiResultText((prev) => prev + chunk);
-          } catch (streamError: unknown) {
-            console.error("Error reading stream:", streamError);
-            const err = streamError as {name?: string; message?: string};
-            if (err.name !== "AbortError") {
-              // AbortError is expected if aborted
-              setAiError(
-                "Error reading stream: " +
-                  (err.message || "Unknown stream error")
-              );
-            } else {
-              console.log("Stream reading aborted by client/controller.");
-            }
-            break;
-          }
+          throw streamError; // Re-throw to be caught by outer catch
         }
       }
-      await processStream();
-      if (
-        taskType === "custom_question" &&
-        !aiError &&
-        !abortControllerRef.current?.signal.aborted
-      ) {
-        setCustomQuestion("");
+
+      if (!abortControllerRef.current?.signal.aborted) {
+        const newResultId = `${taskType}-${Date.now()}`;
+        setAiResults((prevResults) => [
+          {
+            id: newResultId,
+            taskType,
+            text: accumulatedText,
+            wasTruncated: taskWasTruncated,
+          },
+          ...prevResults, // Add new result to the beginning for newest first display
+        ]);
+        setExpandedResultId(newResultId);
+        if (taskType === "custom_question") setCustomQuestion("");
       }
     } catch (error: unknown) {
-      const err = error as {name?: string; message?: string};
-      if (err.name !== "AbortError") {
-        setAiError(err.message || `Failed to process ${taskType} task.`);
+      const err = error as {message?: string; name?: string};
+      if (
+        err.message === "STREAM_ABORTED_BY_NEW_REQUEST" ||
+        err.name === "AbortError"
+      ) {
+        console.log(
+          `AI task ${activeAiTask} aborted by new request or navigation.`
+        );
       } else {
-        if (
-          abortControllerRef.current === null ||
-          abortControllerRef.current.signal.aborted
-        ) {
-          setAiError(null);
-          setAiResultText(
-            ""
-          ); /* setShowTruncationNote(false); Don't hide note if already shown for this attempt */
-        }
+        setGlobalAiError(err.message || `Failed to process ${taskType} task.`);
       }
     } finally {
-      setIsAiTaskLoading(false);
+      setIsStreamingAi(false);
+      setActiveAiTask(null); // Clear active task when it's done or errored
+      setStreamingAiText("");
       abortControllerRef.current = null;
     }
   };
@@ -228,24 +259,19 @@ export default function ResultsView({
     handleGenericAiStreamTask("custom_question", customQuestion);
   };
 
-  let resultBoxStaticTitle = "";
-  if (
-    currentAiTask &&
-    (!isAiTaskLoading || (isAiTaskLoading && aiResultText))
-  ) {
-    if (currentAiTask === "summarize")
-      resultBoxStaticTitle = "AI Generated Summary:";
-    else if (currentAiTask === "extract_key_points")
-      resultBoxStaticTitle = "AI Extracted Key Points:";
-    else if (currentAiTask === "custom_question")
-      resultBoxStaticTitle = "AI Answer:";
-    else if (currentAiTask === "extract_action_items")
-      resultBoxStaticTitle = "AI Extracted Action Items:";
-  }
+  const handleRemoveResult = (idToRemove: string) => {
+    setAiResults((prev) => prev.filter((result) => result.id !== idToRemove));
+    if (expandedResultId === idToRemove) {
+      setExpandedResultId(null); // Collapse if the expanded one is removed
+    }
+  };
+
+  const toggleResultExpansion = (id: string) => {
+    setExpandedResultId((prevId) => (prevId === id ? null : id));
+  };
 
   return (
     <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700">
-      {/* ... Header, Stepper, Main Title, Transcript Display, Download Buttons ... */}
       <div className="text-center mb-6">
         <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">
           QuickScribe
@@ -259,6 +285,7 @@ export default function ResultsView({
       <h2 className="text-center text-xl font-semibold mb-6">
         Transcripts generated successfully!
       </h2>
+
       <div className="relative mb-8">
         <button
           onClick={copyText}
@@ -278,6 +305,7 @@ export default function ResultsView({
           {transcriptionData.text}
         </div>
       </div>
+
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <DownloadButton
           label="TXT"
@@ -311,7 +339,6 @@ export default function ResultsView({
 
       {/* --- AI Interaction Section --- */}
       <div className="my-8 py-6 border-t border-b border-slate-200 space-y-6">
-        {/* ... AI Quick Tools Buttons (Summarize, Key Points, Action Items) ... */}
         <div>
           <h3 className="text-lg font-semibold text-slate-800 mb-3 text-center">
             AI Quick Tools (Streaming)
@@ -320,29 +347,27 @@ export default function ResultsView({
             <StyledButton
               onClick={() => handleGenericAiStreamTask("summarize")}
               variant="secondary"
-              isLoading={isAiTaskLoading && currentAiTask === "summarize"}
-              disabled={isAiTaskLoading || !transcriptionData.text}
+              isLoading={isStreamingAi && activeAiTask === "summarize"}
+              disabled={isStreamingAi || !transcriptionData.text}
               className="group w-full sm:w-auto"
             >
-              {isAiTaskLoading && currentAiTask === "summarize" ? (
+              {isStreamingAi && activeAiTask === "summarize" ? (
                 <Loader2 size={18} className="mr-2 animate-spin" />
               ) : (
                 <Brain size={18} className="mr-2 group-hover:animate-pulse" />
               )}
-              {isAiTaskLoading && currentAiTask === "summarize"
+              {isStreamingAi && activeAiTask === "summarize"
                 ? "Summarizing..."
                 : "Summarize"}
             </StyledButton>
             <StyledButton
               onClick={() => handleGenericAiStreamTask("extract_key_points")}
               variant="secondary"
-              isLoading={
-                isAiTaskLoading && currentAiTask === "extract_key_points"
-              }
-              disabled={isAiTaskLoading || !transcriptionData.text}
+              isLoading={isStreamingAi && activeAiTask === "extract_key_points"}
+              disabled={isStreamingAi || !transcriptionData.text}
               className="group w-full sm:w-auto"
             >
-              {isAiTaskLoading && currentAiTask === "extract_key_points" ? (
+              {isStreamingAi && activeAiTask === "extract_key_points" ? (
                 <Loader2 size={18} className="mr-2 animate-spin" />
               ) : (
                 <ListChecks
@@ -350,7 +375,7 @@ export default function ResultsView({
                   className="mr-2 group-hover:scale-110 transition-transform"
                 />
               )}
-              {isAiTaskLoading && currentAiTask === "extract_key_points"
+              {isStreamingAi && activeAiTask === "extract_key_points"
                 ? "Extracting..."
                 : "Key Points"}
             </StyledButton>
@@ -358,12 +383,12 @@ export default function ResultsView({
               onClick={() => handleGenericAiStreamTask("extract_action_items")}
               variant="secondary"
               isLoading={
-                isAiTaskLoading && currentAiTask === "extract_action_items"
+                isStreamingAi && activeAiTask === "extract_action_items"
               }
-              disabled={isAiTaskLoading || !transcriptionData.text}
+              disabled={isStreamingAi || !transcriptionData.text}
               className="group w-full sm:w-auto"
             >
-              {isAiTaskLoading && currentAiTask === "extract_action_items" ? (
+              {isStreamingAi && activeAiTask === "extract_action_items" ? (
                 <Loader2 size={18} className="mr-2 animate-spin" />
               ) : (
                 <ClipboardCheck
@@ -371,13 +396,13 @@ export default function ResultsView({
                   className="mr-2 group-hover:rotate-[-3deg] transition-transform"
                 />
               )}
-              {isAiTaskLoading && currentAiTask === "extract_action_items"
+              {isStreamingAi && activeAiTask === "extract_action_items"
                 ? "Extracting..."
                 : "Action Items"}
             </StyledButton>
           </div>
         </div>
-        {/* ... Q&A Form ... */}
+
         <div>
           <h3 className="text-lg font-semibold text-slate-800 mb-3 text-center">
             <HelpCircle
@@ -394,23 +419,21 @@ export default function ResultsView({
                 onChange={(e) => setCustomQuestion(e.target.value)}
                 placeholder="Ask anything about the transcript..."
                 className="flex-grow px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-colors text-sm"
-                disabled={isAiTaskLoading || !transcriptionData.text}
+                disabled={isStreamingAi || !transcriptionData.text}
               />
               <StyledButton
                 type="submit"
                 variant="primary"
-                isLoading={
-                  isAiTaskLoading && currentAiTask === "custom_question"
-                }
+                isLoading={isStreamingAi && activeAiTask === "custom_question"}
                 disabled={
-                  isAiTaskLoading ||
+                  isStreamingAi ||
                   !transcriptionData.text ||
                   !customQuestion.trim()
                 }
                 className="flex-shrink-0 bg-sky-600 hover:bg-sky-700 focus-visible:ring-sky-500"
                 size="icon"
               >
-                {!(isAiTaskLoading && currentAiTask === "custom_question") && (
+                {!(isStreamingAi && activeAiTask === "custom_question") && (
                   <Send size={18} />
                 )}
               </StyledButton>
@@ -418,100 +441,120 @@ export default function ResultsView({
           </form>
         </div>
 
-        {/* Truncation Notification */}
-        {showTruncationNote && !isAiTaskLoading && (
-          <div className="mt-4 p-3 border border-amber-300 rounded-lg bg-amber-100 text-amber-700 text-xs flex items-center space-x-2">
-            <AlertCircle size={16} className="flex-shrink-0" />
-            <span>
-              Note: The AI processed a shortened version of the transcript due
-              to its length. Results may not cover the entire content.
-            </span>
-          </div>
-        )}
-
-        {/* Display AI Result or Error */}
-        {(currentAiTask ||
-          aiResultText ||
-          (aiError && !isAiTaskLoading) ||
-          (showTruncationNote && !isAiTaskLoading)) &&
-          // If there's only the truncation note and no actual result/error yet, ensure box isn't awkwardly empty
-          // by adding a condition to not render if it's ONLY the truncation note and task is not loading.
-          // Or ensure the box has min-height. For now, let's adjust the outer condition slightly.
-          // Show if (loading OR result OR error) OR (truncationNote AND no other main content yet but task was run)
-          ((isAiTaskLoading && currentAiTask) ||
-            aiResultText ||
-            (aiError && !isAiTaskLoading) ||
-            (showTruncationNote &&
-              currentAiTask &&
-              !aiResultText &&
-              !aiError)) && (
-            <div
-              className={`mt-2 p-4 border rounded-lg text-sm ${
-                aiError && !isAiTaskLoading
-                  ? "border-red-300 bg-red-50 text-red-700"
-                  : "border-sky-200 bg-sky-50 text-slate-700"
-              }`}
-            >
-              {aiError && !isAiTaskLoading ? (
-                <p className="break-words">
-                  <strong>Error:</strong> {aiError}
-                </p>
+        {/* Display Area for AI Results and current streaming text */}
+        <div className="mt-6 space-y-3">
+          {/* Display currently streaming text if any task is active */}
+          {isStreamingAi && activeAiTask && (
+            <div className="p-4 border border-sky-300 rounded-lg bg-sky-50 text-sm text-slate-700 shadow-inner">
+              <h4 className="font-semibold mb-2 text-sky-600 flex items-center">
+                <Loader2 size={16} className="animate-spin mr-2" />
+                Generating {getTaskDisplayName(activeAiTask)}...
+              </h4>
+              {streamingAiText ? (
+                <div className="whitespace-pre-wrap break-words mt-1">
+                  {streamingAiText}
+                  <span className="inline-block animate-ping w-1.5 h-1.5 bg-sky-500 rounded-full ml-1"></span>
+                </div>
               ) : (
-                <>
-                  {resultBoxStaticTitle && (
-                    <h4 className="font-semibold mb-2 text-sky-700">
-                      {resultBoxStaticTitle}
-                    </h4>
-                  )}
-                  {isAiTaskLoading &&
-                    !aiResultText &&
-                    currentAiTask &&
-                    currentAiTask !== "custom_question" && (
-                      <div className="flex items-center justify-center py-1">
-                        <Loader2
-                          size={18}
-                          className="animate-spin text-sky-600 mr-2"
-                        />
-                        Processing AI Request...
-                      </div>
-                    )}
-                  {aiResultText && (
-                    <div
-                      className={`whitespace-pre-wrap break-words ${
-                        isAiTaskLoading &&
-                        !aiResultText &&
-                        currentAiTask !== "custom_question"
-                          ? ""
-                          : "mt-1"
-                      }`}
-                    >
-                      {aiResultText}
-                      {isAiTaskLoading && aiResultText && (
-                        <span className="inline-block animate-ping w-1.5 h-1.5 bg-sky-500 rounded-full ml-1"></span>
-                      )}
-                    </div>
-                  )}
-                  {!isAiTaskLoading && aiResultText && !aiError && (
-                    <div className="mt-3 flex justify-end">
-                      <StyledButton
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          navigator.clipboard.writeText(aiResultText)
-                        }
-                        className="text-sky-600 hover:bg-sky-100"
-                      >
-                        <ClipboardCopy size={16} className="mr-1.5" /> Copy
-                        Result
-                      </StyledButton>
-                    </div>
-                  )}
-                </>
+                <p className="text-slate-400 italic">
+                  Waiting for AI response to start streaming...
+                </p>
               )}
+              {/* Truncation note for actively streaming task */}
+              {/* We need to get wasTruncated for the active stream. This is tricky.
+                        Let's assume the note appears with the final result for now.
+                    */}
             </div>
           )}
+
+          {/* Display global AI error if any, and not currently streaming something else */}
+          {globalAiError && !isStreamingAi && (
+            <div className="p-3 border border-red-300 rounded-lg bg-red-50 text-sm text-red-700">
+              <p className="break-words">
+                <strong>Error:</strong> {globalAiError}
+              </p>
+            </div>
+          )}
+
+          {/* List of completed AI Results (Accordion) */}
+          {aiResults.map((result) => (
+            <div
+              key={result.id}
+              className="border border-slate-300 rounded-lg shadow-sm overflow-hidden"
+            >
+              <button
+                onClick={() => toggleResultExpansion(result.id)}
+                className="w-full flex justify-between items-center p-3 text-left bg-slate-100 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-inset transition-colors"
+                aria-expanded={expandedResultId === result.id}
+                aria-controls={`result-content-${result.id}`}
+              >
+                <span className="font-semibold text-slate-800">
+                  {getTaskDisplayName(result.taskType)}
+                </span>
+                {expandedResultId === result.id ? (
+                  <ChevronUp size={20} className="text-slate-600" />
+                ) : (
+                  <ChevronDown size={20} className="text-slate-600" />
+                )}
+              </button>
+              {expandedResultId === result.id && (
+                <div
+                  id={`result-content-${result.id}`}
+                  className="p-4 border-t border-slate-300 bg-white"
+                >
+                  {result.wasTruncated && (
+                    <div className="mb-3 p-2.5 text-xs bg-amber-50 text-amber-700 border border-amber-300 rounded-md flex items-center space-x-2">
+                      <AlertCircle
+                        size={16}
+                        className="flex-shrink-0 text-amber-500"
+                      />
+                      <span>
+                        Note: The AI processed a shortened version of the
+                        transcript due to its length. Results may not cover the
+                        entire content.
+                      </span>
+                    </div>
+                  )}
+                  {result.error ? (
+                    <p className="text-red-600 break-words">
+                      <strong>Error generating this result:</strong>{" "}
+                      {result.error}
+                    </p>
+                  ) : (
+                    <div className="whitespace-pre-wrap break-words text-sm text-slate-700">
+                      {result.text}
+                    </div>
+                  )}
+                  <div className="mt-4 flex justify-end space-x-2">
+                    <StyledButton
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        result.text &&
+                        !result.error &&
+                        navigator.clipboard.writeText(result.text)
+                      }
+                      className="text-sky-600 hover:bg-sky-100 disabled:text-slate-400"
+                      disabled={!result.text || !!result.error}
+                    >
+                      <ClipboardCopy size={14} className="mr-1.5" /> Copy
+                    </StyledButton>
+                    <StyledButton
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleRemoveResult(result.id)}
+                      className="text-slate-500 hover:text-red-600 hover:bg-red-50"
+                    >
+                      <XCircle size={14} className="mr-1.5" /> Clear
+                    </StyledButton>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
-      {/* ... Footer Buttons ... */}
+
       <div className="flex justify-center mb-6">
         <StyledButton
           onClick={zipAll}
