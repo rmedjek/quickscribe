@@ -1,11 +1,20 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/actions/interactWithTranscriptAction.ts
 "use server";
 
 import Groq from 'groq-sdk';
 import { get_encoding, Tiktoken } from "tiktoken";
+import { retryWithBackoff } from '@/lib/api-utils';
 
-if (!process.env.GROQ_API_KEY) { throw new Error("GROQ_API_KEY environment variable is not set. This is a server configuration issue."); }
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+// Ensure GROQ_API_KEY is available
+if (!process.env.GROQ_API_KEY) {
+  throw new Error("GROQ_API_KEY environment variable is not set. This is a server configuration issue.");
+}
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+  maxRetries: 0, // Let our custom retryWithBackoff handle retries
+});
 
 //const DEFAULT_LLM_MODEL = "llama3-8b-8192";
 const DEFAULT_LLM_MODEL = "llama3-70b-8192";
@@ -23,12 +32,11 @@ const DEFAULT_CONTEXT_WINDOW = 7800;
 
 function truncateStringToTokenLimit(text: string, limit: number, encoding: Tiktoken): { truncatedText: string; tokenCount: number; wasTruncated: boolean } {
   let currentText = text; let tokens = encoding.encode(currentText); let wasTruncated = false;
-  const charsPerTokenEstimate = 2; // Average chars per token can vary; this is a heuristic
+  const charsPerTokenEstimate = 2;
   while (tokens.length > limit) {
     wasTruncated = true; const tokensOver = tokens.length - limit;
-    // Estimate characters to remove; ensure at least 1 char is removed to make progress
     const charsToRemove = Math.max(1, Math.floor(tokensOver * charsPerTokenEstimate * 0.5));
-    if (currentText.length <= charsToRemove) { currentText = ""; break; } // Avoid infinite loop if charsToRemove is 0 or too large
+    if (currentText.length <= charsToRemove) { currentText = ""; break; }
     currentText = currentText.substring(0, currentText.length - charsToRemove);
     tokens = encoding.encode(currentText);
   }
@@ -49,7 +57,7 @@ export async function interactWithTranscriptAction(
 
   let systemPrompt = "";
   let finalUserMessageContentForLlm: string;
-  let userPayloadWasActuallyTruncated = false; // Initialize here
+  let userPayloadWasActuallyTruncated = false;
 
   switch (taskType) {
     case "summarize":
@@ -91,10 +99,9 @@ export async function interactWithTranscriptAction(
     encoding.free();
     const errorMsg = `Not enough tokens for user content (Available: ${availableTokensForUserPayload}) after system prompt (${systemPromptTokens} tokens) and reserving ${TOKENS_RESERVED_FOR_OUTPUT_AND_TPM_BUFFER} for response/TPM within model context of ${modelContextLimit}.`;
     console.error(`[AI Action] Error: ${errorMsg}`);
-    // For errors before API call, set header if we know original was too long conceptually
     const headers = new Headers({ 'Content-Type': 'application/json' });
-    if (encoding.encode(transcriptText).length + systemPromptTokens > modelContextLimit - TOKENS_RESERVED_FOR_OUTPUT_AND_TPM_BUFFER) { // Simple check if original would have been too long
-        headers.set('X-Content-Truncated', 'true'); // Indicate original content was too large
+    if (encoding.encode(transcriptText).length + systemPromptTokens > modelContextLimit - TOKENS_RESERVED_FOR_OUTPUT_AND_TPM_BUFFER) {
+        headers.set('X-Content-Truncated', 'true');
     }
     return Response.json({ success: false, error: errorMsg }, { status: 413, headers });
   }
@@ -117,7 +124,7 @@ export async function interactWithTranscriptAction(
 
     const truncationResult = truncateStringToTokenLimit(transcriptText, targetTokenLimitForTranscriptItself, encoding);
     transcriptSegmentForLlm = truncationResult.truncatedText;
-    userPayloadWasActuallyTruncated = truncationResult.wasTruncated; // Capture if truncation happened
+    userPayloadWasActuallyTruncated = truncationResult.wasTruncated;
     if(userPayloadWasActuallyTruncated) transcriptSegmentForLlm += "\n...[TRANSCRIPT SEGMENT TRUNCATED]";
     
     console.log(`[AI Action] Q&A: Original transcript tokens: ${encoding.encode(transcriptText).length}. Target for segment: ${targetTokenLimitForTranscriptItself}. Actual segment tokens (before marker): ${truncationResult.tokenCount}.`);
@@ -125,7 +132,7 @@ export async function interactWithTranscriptAction(
   } else {
     const truncationResult = truncateStringToTokenLimit(transcriptText, availableTokensForUserPayload, encoding);
     transcriptSegmentForLlm = truncationResult.truncatedText;
-    userPayloadWasActuallyTruncated = truncationResult.wasTruncated; // Capture if truncation happened
+    userPayloadWasActuallyTruncated = truncationResult.wasTruncated;
     if(userPayloadWasActuallyTruncated) transcriptSegmentForLlm += "\n...[TRANSCRIPT TRUNCATED]";
     
     console.log(`[AI Action] Task "${taskType}": Original transcript tokens: ${encoding.encode(transcriptText).length}. Target for segment: ${availableTokensForUserPayload}. Actual segment tokens (before marker): ${truncationResult.tokenCount}.`);
@@ -151,10 +158,30 @@ export async function interactWithTranscriptAction(
   
   encoding.free();
 
+  // MODIFIED PART: Wrap the Groq API call with retryWithBackoff
   try {
-    console.log(`[AI Action] Creating stream to Groq. User message tokens: ${finalUserMessageActualTokens}.`);
-    const messagesForGroq: GroqMessage[] = [ { role: "system", content: systemPrompt }, { role: "user", content: finalUserMessageContentForLlm }];
-    const groqStream = await groq.chat.completions.create({ messages: messagesForGroq, model: modelToUse, stream: true });
+    const operation = async () => {
+      console.log(`[AI Action] Attempting Groq chat completion stream. Model: "${modelToUse}", Task: "${taskType}". User message tokens: ${finalUserMessageActualTokens}.`);
+      const messagesForGroq: GroqMessage[] = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: finalUserMessageContentForLlm },
+      ];
+      // Note: The groq client already has a timeout from its instantiation.
+      return await groq.chat.completions.create({
+        messages: messagesForGroq,
+        model: modelToUse,
+        stream: true,
+      });
+    };
+
+    // Use the imported retryWithBackoff helper
+    const groqStream = await retryWithBackoff({
+        operationName: `GroqChatCompletion-${taskType}`, // Dynamic name for logging
+        operation,
+        // Default retry parameters from api-utils.ts will be used unless overridden here:
+        // maxRetries: 2, 
+        // initialBackoffMs: 1500,
+    });
     
     const responseHeaders = new Headers({ 'Content-Type': 'text/plain; charset=utf-8' });
     if (userPayloadWasActuallyTruncated) {
@@ -165,20 +192,46 @@ export async function interactWithTranscriptAction(
     const readableWebStream = new ReadableStream({ 
         async start(controller) {
             try { for await (const chunk of groqStream) { const content = chunk.choices[0]?.delta?.content; if (content) { controller.enqueue(new TextEncoder().encode(content)); } } }
-            catch (streamError) { console.error("Stream processing error:", streamError); controller.error(streamError); }
+            catch (streamError) { console.error("Stream processing error in ReadableStream:", streamError); controller.error(streamError); }
             finally { console.log("Closing stream controller."); controller.close(); }
         }
     });
     return new Response(readableWebStream, { headers: responseHeaders });
 
-  } catch (error: unknown) { 
-    let errorMessage = "Groq API Error"; let statusCode = 500;
-    if (error instanceof Groq.APIError) { errorMessage = `Groq API Error (${error.status || 'N/A'}): ${error.message}`; if (error.status) statusCode = error.status;}
-    else if (error instanceof Error) { errorMessage = error.message;}
-    console.error(`[AI Action] Groq API call failed for task "${taskType}": ${errorMessage}`);
+  } catch (error: unknown) { // This catch block now primarily handles errors if retryWithBackoff itself gives up
+    console.error(`[AI Action] Error after all retries for task "${taskType}" with Groq:`, error);
+    
+    let errorMessage = `An unexpected error occurred during AI interaction: ${ (error as Error).message || String(error) }`;
+    let statusCode = 500;
+    const errorCode = (error as any).code || ((error as any).cause as any)?.code;
+
+    if (error instanceof Groq.APIConnectionTimeoutError) {
+        errorMessage = `Groq API Error: Connection timed out. The request might be too complex or the service is currently busy. Please try again shortly.`;
+    } else if (error instanceof Groq.APIError) {
+      if (error.status === 400 && error.message.includes("model_decommissioned")) {
+        errorMessage = `The selected AI model (${modelToUse}) is currently unavailable or decommissioned. Please try a different model or check service status.`;
+        statusCode = 400;
+      } else if (error.status === 413) {
+        errorMessage = `The request to the AI service was too large (Status 413), even after attempting to shorten it. Original error: ${error.message}`;
+        statusCode = 413;
+      } else if (error.status === 429) {
+        errorMessage = `The AI service is experiencing high demand (Status 429). Please try again in a few moments.`;
+        statusCode = 429;
+      } else if (error.status && error.status >= 500) {
+        errorMessage = `The AI service encountered a server error (Status ${error.status}). Please try again later. Original error: ${error.message}`;
+        statusCode = error.status;
+      } else if (errorCode === 'ECONNRESET') {
+         errorMessage = `A connection error (ECONNRESET) occurred with the AI service. This can happen with large requests or network interruptions.`;
+      } else {
+        errorMessage = `Groq API Error (Status: ${error.status || 'N/A'}): ${error.message}`;
+      }
+      console.error("[AI Action] Full Groq.APIError object details:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    } else if (errorCode === 'ECONNRESET') {
+        errorMessage = `A direct connection error (ECONNRESET) occurred with the AI service. This often happens with large requests or network issues.`;
+    }
     
     const errorResponseHeaders = new Headers({ 'Content-Type': 'application/json' });
-    if (userPayloadWasActuallyTruncated) { // Indicate truncation even if API call itself failed later
+    if (userPayloadWasActuallyTruncated) {
         errorResponseHeaders.set('X-Content-Truncated', 'true');
     }
     return Response.json({ success: false, error: errorMessage }, { status: statusCode, headers: errorResponseHeaders });
