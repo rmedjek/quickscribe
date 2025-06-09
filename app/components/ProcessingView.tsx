@@ -3,7 +3,8 @@
 
 import React from "react";
 import {CheckCircle} from "lucide-react";
-import ProgressStepper, {Step} from "./ProgressStepper";
+import ProgressStepper from "./ProgressStepper";
+import {AppStep, StepId} from "@/types/app";
 
 export interface StageDisplayData {
   name: string;
@@ -18,8 +19,8 @@ export interface StageDisplayData {
 interface Props {
   stages: StageDisplayData[];
   currentOverallStatusMessage: string;
-  appSteps: Step[];
-  currentAppStepId: string;
+  appSteps: AppStep[];
+  currentAppStepId: StepId;
 }
 
 export default function ProcessingView({
@@ -29,7 +30,7 @@ export default function ProcessingView({
   currentAppStepId,
 }: Props) {
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700">
+    <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700 dark:text-slate-200">
       {/* -------------------------------------------------- header */}
       <div className="text-center mb-6">
         <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">
@@ -99,7 +100,7 @@ function StageRow({stage}: {stage: StageDisplayData}) {
       </div>
 
       {/* ---- progress bar ---- */}
-      <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+      <div className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
         <div
           className={`${barClass} h-full transition-[width] duration-500 ease-linear`}
           style={{width}}

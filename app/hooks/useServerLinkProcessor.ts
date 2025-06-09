@@ -7,6 +7,7 @@ import { DetailedTranscriptionResult } from "@/actions/transcribeAudioAction";
 import { TranscriptionMode } from "@/components/ConfirmationView";
 import { StageDisplayData } from "@/components/ProcessingView";
 import { useStageUpdater } from "./useStageUpdater";
+import { useStepper } from "../contexts/StepperContext";
 
 const AUDIO_EST_MS = 12_000;
 
@@ -18,8 +19,6 @@ interface Props {
   onStagesUpdate: (
     s: StageDisplayData[] | ((p: StageDisplayData[]) => StageDisplayData[])
   ) => void;
-  /** advance stepper */
-  onStepChange?: (id: "configure" | "process" | "transcribe") => void;
 }
 
 /* ================================================================= */
@@ -27,9 +26,9 @@ export function useServerLinkProcessor({
   onProcessingComplete,
   onError,
   onStatusUpdate,
-  onStagesUpdate,
-  onStepChange,
+  onStagesUpdate
 }: Props) {
+  const { setStep } = useStepper();
   const [busy, setBusy] = useState(false);
   const patch = useStageUpdater(onStagesUpdate);
   const timer = useRef<NodeJS.Timeout | null>(null);
@@ -45,7 +44,7 @@ export function useServerLinkProcessor({
   const processLink = useCallback(
     async (link: string, mode: TranscriptionMode) => {
       setBusy(true);
-      onStepChange?.("process");
+      setStep?.("process");
 
       onStagesUpdate([
         {
@@ -88,7 +87,7 @@ export function useServerLinkProcessor({
         });
 
         /* 🔔 stepper advance */
-        onStepChange?.("transcribe");
+        setStep?.("transcribe");
       }, AUDIO_EST_MS);
 
       onStatusUpdate("Server is processing the link…");
@@ -127,7 +126,7 @@ export function useServerLinkProcessor({
       onProcessingComplete,
       onStatusUpdate,
       onStagesUpdate,
-      onStepChange,
+      setStep,
     ]
   );
 
