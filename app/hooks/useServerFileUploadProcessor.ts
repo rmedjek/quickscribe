@@ -13,6 +13,7 @@ import {
 import { TranscriptionMode } from "@/components/ConfirmationView";
 import { StageDisplayData } from "@/components/ProcessingView";
 import { useStageUpdater } from "./useStageUpdater";
+import { useStepper } from "../contexts/StepperContext";
 
 interface Props {
   onProcessingComplete: (d: DetailedTranscriptionResult) => void;
@@ -21,7 +22,6 @@ interface Props {
   onStagesUpdate: (
     s: StageDisplayData[] | ((p: StageDisplayData[]) => StageDisplayData[])
   ) => void;
-  onStepChange?: (id: "configure" | "process" | "transcribe") => void;
 }
 
 export function useServerFileUploadProcessor({
@@ -29,15 +29,15 @@ export function useServerFileUploadProcessor({
   onError,
   onStatusUpdate,
   onStagesUpdate,
-  onStepChange,
 }: Props) {
+  const { setStep } = useStepper();
   const [busy, setBusy] = useState(false);
   const patch = useStageUpdater(onStagesUpdate);
 
   const processFile = useCallback(
     async (file: File, mode: TranscriptionMode, isDirectAudio: boolean) => {
       setBusy(true);
-      onStepChange?.("process"); // Move to "Process Audio" step
+      setStep?.("process"); // Move to "Process Audio" step
 
       let audioBlobForGroq: Blob;
       const originalFileName = file.name;
@@ -91,7 +91,7 @@ export function useServerFileUploadProcessor({
       }
 
       // --- Common part: Groq Transcription ---
-      onStepChange?.("transcribe"); // Move to "Get Transcripts" step
+      setStep?.("transcribe"); // Move to "Get Transcripts" step
       const modelName = mode === "turbo" ? "Whisper Large v3" : "Distil-Whisper Large-v3-en";
       onStatusUpdate("AI is transcribing your audio…");
       patch("groq", { isActive: true, isIndeterminate: true, subText: `Processing using Groq's ${modelName} model` });
@@ -113,7 +113,7 @@ export function useServerFileUploadProcessor({
       onProcessingComplete(transcriptionResult.data);
       setBusy(false);
     },
-    [onError, onProcessingComplete, onStatusUpdate, onStagesUpdate, patch, onStepChange]
+    [onError, onProcessingComplete, onStatusUpdate, onStagesUpdate, patch, setStep]
   );
 
   return { processFile, isProcessing: busy };

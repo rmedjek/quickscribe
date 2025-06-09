@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import StyledButton from "./StyledButton";
 import ProgressStepper, {Step as AppProgressStep} from "./ProgressStepper"; // Use existing Step type
-import {SelectedInputType} from "@/app/page"; // Import the type from page.tsx
+import {SelectedInputType} from "@/types/app";
 
 const MAX_CLIENT_SIZE_BYTES = 200 * 1024 * 1024; // 200MB example
 export type TranscriptionMode = "chill" | "turbo";
@@ -84,7 +84,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   };
 
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700">
+    <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700 dark:text-slate-200">
       <div className="text-center mb-6">
         <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">
           QuickScribe
@@ -94,8 +94,8 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
 
       <ProgressStepper steps={APP_STEPS} currentStepId="configure" />
 
-      <div className="mb-6 p-4 border border-slate-200 rounded-lg bg-slate-50 text-sm">
-        <h3 className="text-base font-semibold mb-2 text-slate-700 flex items-center">
+      <div className="mb-6 p-4 border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm">
+        <h3 className="text-base font-semibold mb-2 text-slate-700 dark:text-slate-200 flex items-center">
           {getInputIcon()} Selected {getInputTypeDisplayName()}:
         </h3>
         {isFileProvided && file && (
@@ -168,7 +168,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                 className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   selectedMode === "chill"
                     ? "border-sky-500 bg-sky-50 shadow-lg scale-105"
-                    : "border-slate-200 bg-slate-50 hover:border-slate-300"
+                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300"
                 }`}
                 onClick={() => setSelectedMode("chill")}
               >
@@ -181,7 +181,9 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                         : "text-slate-500"
                     }`}
                   />
-                  <h4 className="font-semibold text-slate-700">Chill Mode</h4>
+                  <h4 className="font-semibold text-slate-700 dark:text-slate-200">
+                    Chill Mode
+                  </h4>
                 </div>
                 <p className="text-xs text-slate-500">
                   Efficient & fast with Distil-Whisper. Good for most cases.
@@ -191,7 +193,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                 className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   selectedMode === "turbo"
                     ? "border-orange-500 bg-orange-50 shadow-lg scale-105"
-                    : "border-slate-200 bg-slate-50 hover:border-slate-300"
+                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300"
                 }`}
                 onClick={() => setSelectedMode("turbo")}
               >
@@ -204,7 +206,9 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                         : "text-slate-500"
                     }`}
                   />
-                  <h4 className="font-semibold text-slate-700">Turbo Mode</h4>
+                  <h4 className="font-semibold text-slate-700 dark:text-slate-200">
+                    Turbo Mode
+                  </h4>
                 </div>
                 <p className="text-xs text-slate-500">
                   Highest accuracy with Whisper Large v3. Best for critical

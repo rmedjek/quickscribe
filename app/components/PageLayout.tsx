@@ -7,9 +7,9 @@ interface PageLayoutProps {
 
 const PageLayout: React.FC<PageLayoutProps> = ({children}) => {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 transition-colors">
       {children}
-      <footer className="w-full max-w-4xl px-4 py-4 text-center mt-6 sm:mt-8">
+      <footer className="w-full max-w-4xl px-4 py-4 text-center mt-6 sm:mt-8 text-xs text-slate-500 dark:text-slate-400">
         {" "}
         {/* Reduced py and mt slightly */}
         <p className="text-xs text-slate-500">

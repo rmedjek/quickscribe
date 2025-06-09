@@ -8,9 +8,6 @@ import os from 'node:os';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import fetch from 'node-fetch-commonjs'; 
-// We don't strictly need play.validate if we're defaulting to yt-dlp for non-direct links,
-// but it can be a quick check for explicit YouTube URLs if desired.
-// import play from 'play-dl'; 
 import { transcribeAudioAction, DetailedTranscriptionResult } from './transcribeAudioAction'; 
 import { TranscriptionMode } from '@/components/ConfirmationView';
 
@@ -86,7 +83,7 @@ export async function processVideoLinkAction(
       // -o: Output template. We specify the full path.
       const ytDlpOutputExtension = 'm4a'; // Ask yt-dlp to give us M4A
       tempDownloadedFilePath = path.join(os.tmpdir(), `${downloadedFileNameBase}.${ytDlpOutputExtension}`);
-      const ytDlpCommand = `yt-dlp --quiet --progress --force-overwrites -x --audio-format ${ytDlpOutputExtension} -o "${tempDownloadedFilePath}" --no-playlist "${videoUrl}"`;
+      const ytDlpCommand = `yt-dlp --quiet --progress --force-overwrites -x --audio-format ${ytDlpOutputExtension} -o "${tempDownloadedFilePath}" --no-playlist -- "${videoUrl}"`;
       
       console.log(`[VideoLinkAction] Executing yt-dlp: ${ytDlpCommand}`);
       try {

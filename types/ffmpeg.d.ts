@@ -18,7 +18,7 @@ declare module '@ffmpeg/ffmpeg' {
     load(options?: {
       coreURL?: string;
       wasmURL?: string;
-      // workerURL?: string; // If you ever use the multi-threaded version
+      workerURL?: string; // If i ever use the multi-threaded version
     }): Promise<void>;
 
     // Function overloads for the .on() method for better type inference

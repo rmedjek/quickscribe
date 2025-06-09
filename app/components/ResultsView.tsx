@@ -16,9 +16,10 @@ import {
   Send,
   ClipboardCheck,
   AlertCircle,
-  ChevronDown, // For accordion
-  ChevronUp, // For accordion
-  XCircle, // For clearing an individual result
+  ChevronDown,
+  ChevronUp,
+  XCircle,
+  Trash2,
 } from "lucide-react";
 import StyledButton from "./StyledButton";
 import DownloadButton from "./DownloadButton";
@@ -45,7 +46,6 @@ const STEPS: Step[] = [
 const modeLabel = (m: TranscriptionMode) => (m === "turbo" ? "Turbo" : "Chill");
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
 
-// Define the structure for a single AI result item
 interface AiResultItem {
   id: string;
   taskType: AIInteractionTaskType;
@@ -65,20 +65,23 @@ export default function ResultsView({
   mode,
   onRestart,
 }: Props) {
-  const [copied, setCopied] = useState(false); // For main transcript copy
+  const [copied, setCopied] = useState(false);
   const [zipping, setZipping] = useState(false);
 
-  // --- MODIFIED AI State for Multiple Results ---
   const [activeAiTask, setActiveAiTask] =
-    useState<AIInteractionTaskType | null>(null); // Task currently being processed/streamed
-  const [streamingAiText, setStreamingAiText] = useState<string>(""); // Text for the currently streaming task
-  const [isStreamingAi, setIsStreamingAi] = useState(false); // Global flag if any AI task is actively loading/streaming
-  const [aiResults, setAiResults] = useState<AiResultItem[]>([]); // Array to store all completed AI results
-  const [globalAiError, setGlobalAiError] = useState<string | null>(null); // For general errors before streaming or fetch failures
-  const [expandedResultId, setExpandedResultId] = useState<string | null>(null); // ID of the currently expanded accordion item
-
+    useState<AIInteractionTaskType | null>(null);
+  const [streamingAiText, setStreamingAiText] = useState<string>("");
+  const [isStreamingAi, setIsStreamingAi] = useState(false);
+  const [aiResults, setAiResults] = useState<AiResultItem[]>([]);
+  const [globalAiError, setGlobalAiError] = useState<string | null>(null);
+  const [expandedResultId, setExpandedResultId] = useState<string | null>(null);
   const [customQuestion, setCustomQuestion] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // For the visual cue on newly added result
+  const [newlyAddedResultId, setNewlyAddedResultId] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     return () => {
@@ -87,6 +90,16 @@ export default function ResultsView({
       }
     };
   }, []);
+
+  // Effect to remove the highlight after a delay for newly added results
+  useEffect(() => {
+    if (newlyAddedResultId) {
+      const timer = setTimeout(() => {
+        setNewlyAddedResultId(null);
+      }, 1500); // Duration should match your CSS animation
+      return () => clearTimeout(timer);
+    }
+  }, [newlyAddedResultId]);
 
   const copyText = () => {
     navigator.clipboard.writeText(transcriptionData.text).then(() => {
@@ -130,9 +143,9 @@ export default function ResultsView({
         return "Action Items";
       default:
         console.warn(
-          `[ResultsView] Encountered an unhandled AIInteractionTaskType in getTaskDisplayName: ${taskType}`
+          `[ResultsView] Unhandled AIInteractionTaskType in getTaskDisplayName: ${taskType}`
         );
-        return "AI Generated Result"; // Provide a generic fallback
+        return "AI Generated Result";
     }
   };
 
@@ -145,7 +158,7 @@ export default function ResultsView({
       taskType === "custom_question" &&
       (!questionForTask || questionForTask.trim() === "")
     ) {
-      setGlobalAiError("Please enter a question."); // Use global error for pre-flight validation
+      setGlobalAiError("Please enter a question.");
       return;
     }
 
@@ -167,6 +180,11 @@ export default function ResultsView({
         taskType === "custom_question" ? questionForTask : undefined,
     };
 
+    body.transcriptText = transcriptionData.text;
+    body.taskType = taskType;
+    body.customPrompt =
+      taskType === "custom_question" ? questionForTask : undefined;
+
     try {
       const response = await fetch(AI_INTERACTION_API_ENDPOINT, {
         method: "POST",
@@ -174,6 +192,7 @@ export default function ResultsView({
         body: JSON.stringify(body),
         signal: abortControllerRef.current.signal,
       });
+      // Not directly setting body here, but JSON.stringify(body) will be used
 
       if (response.headers.get("X-Content-Truncated") === "true") {
         taskWasTruncated = true;
@@ -220,18 +239,21 @@ export default function ResultsView({
         }
       }
 
+      await (async function processStream() {
+        /* ... your existing processStream logic ... */
+      })(); // IIFE to keep it async
+
       if (!abortControllerRef.current?.signal.aborted) {
         const newResultId = `${taskType}-${Date.now()}`;
-        setAiResults((prevResults) => [
-          {
-            id: newResultId,
-            taskType,
-            text: accumulatedText,
-            wasTruncated: taskWasTruncated,
-          },
-          ...prevResults, // Add new result to the beginning for newest first display
-        ]);
+        const newResult: AiResultItem = {
+          id: newResultId,
+          taskType,
+          text: accumulatedText,
+          wasTruncated: taskWasTruncated,
+        };
+        setAiResults((prevResults) => [newResult, ...prevResults]);
         setExpandedResultId(newResultId);
+        setNewlyAddedResultId(newResultId);
         if (taskType === "custom_question") setCustomQuestion("");
       }
     } catch (error: unknown) {
@@ -248,7 +270,7 @@ export default function ResultsView({
       }
     } finally {
       setIsStreamingAi(false);
-      setActiveAiTask(null); // Clear active task when it's done or errored
+      setActiveAiTask(null);
       setStreamingAiText("");
       abortControllerRef.current = null;
     }
@@ -270,42 +292,52 @@ export default function ResultsView({
     setExpandedResultId((prevId) => (prevId === id ? null : id));
   };
 
+  // NEW: Handler for Clearing All AI Results
+  const handleClearAllAiResults = () => {
+    setAiResults([]);
+    setExpandedResultId(null);
+    setGlobalAiError(null);
+    setNewlyAddedResultId(null); // Also clear this
+    // We won't stop an actively streaming task with this button for now
+  };
+
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700">
+    <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700 dark:text-slate-200">
+      {/* ... Header, Stepper, Main Title, Transcript Display, Download Buttons ... (Keep your existing code) */}
       <div className="text-center mb-6">
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">
+        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-50">
           QuickScribe
         </h1>
-        <p className="text-sm text-slate-500 mt-1">Powered by Groq</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          Powered by Groq
+        </p>
       </div>
       <GrayProgressStepper steps={STEPS} />
       <div className="flex justify-center my-6">
-        <CheckCircle2 size={72} className="text-gray-500" />
+        <CheckCircle2 size={72} className="text-gray-500 dark:text-slate-400" />
       </div>
-      <h2 className="text-center text-xl font-semibold mb-6">
+      <h2 className="text-center text-xl font-semibold text-slate-900 dark:text-slate-50 mb-6">
         Transcripts generated successfully!
       </h2>
-
       <div className="relative mb-8">
         <button
           onClick={copyText}
-          className="absolute right-3 top-3 p-1.5 rounded-md text-gray-600 bg-slate-200 hover:bg-slate-300 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400 transition"
+          className="absolute right-3 top-3 p-1.5 rounded-md text-gray-600 dark:text-gray-300 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400 dark:focus-visible:ring-sky-400 dark:focus-visible:ring-offset-slate-800 transition"
           title="Copy text"
         >
           <ClipboardCopy size={18} />
         </button>
         <span
-          className={`absolute right-0 -top-6 text-xs font-medium text-green-600 transition-opacity duration-200 ${
+          className={`absolute right-0 -top-6 text-xs font-medium text-green-600 dark:text-green-400 transition-opacity duration-200 ${
             copied ? "opacity-100" : "opacity-0"
           }`}
         >
           Text Copied!
         </span>
-        <div className="max-h-56 overflow-y-auto p-4 border border-slate-200 rounded-xl bg-slate-50 text-sm leading-relaxed">
+        <div className="max-h-56 overflow-y-auto p-4 border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700/50 text-sm leading-relaxed">
           {transcriptionData.text}
         </div>
       </div>
-
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <DownloadButton
           label="TXT"
@@ -338,12 +370,35 @@ export default function ResultsView({
       </div>
 
       {/* --- AI Interaction Section --- */}
-      <div className="my-8 py-6 border-t border-b border-slate-200 space-y-6">
-        <div>
-          <h3 className="text-lg font-semibold text-slate-800 mb-3 text-center">
-            AI Quick Tools (Streaming)
+      <div className="my-8 py-6 border-t border-b border-slate-200 dark:border-slate-700 space-y-6">
+        {/* MODIFIED: Header for AI Tools with Clear All button */}
+        <div className="flex justify-between items-center mb-0">
+          {" "}
+          {/* Reduced mb if tools are directly below */}
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+            AI Insights & Tools
           </h3>
+          {aiResults.length > 0 && !isStreamingAi && (
+            <StyledButton
+              onClick={handleClearAllAiResults}
+              variant="ghost"
+              size="sm"
+              className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-700/20"
+              title="Clear all AI generated results"
+            >
+              <Trash2 size={14} className="mr-1.5" />
+              Clear All
+            </StyledButton>
+          )}
+        </div>
+
+        {/* AI Quick Tool Buttons */}
+        <div className="pt-1">
+          {" "}
+          {/* Removed the div and h3 that was here */}
           <div className="flex flex-col sm:flex-row flex-wrap justify-center items-center gap-3">
+            {/* ... Your StyledButtons for Summarize, Key Points, Action Items ... */}
+            {/* Ensure their isLoading is like: isLoading={isStreamingAi && activeAiTask === "summarize"} */}
             <StyledButton
               onClick={() => handleGenericAiStreamTask("summarize")}
               variant="secondary"
@@ -403,11 +458,13 @@ export default function ResultsView({
           </div>
         </div>
 
+        {/* Q&A Form */}
         <div>
-          <h3 className="text-lg font-semibold text-slate-800 mb-3 text-center">
+          {/* ... Your Q&A Form ... */}
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3 text-center">
             <HelpCircle
               size={20}
-              className="inline mr-1 mb-0.5 text-slate-400"
+              className="inline mr-1 mb-0.5 text-slate-400 dark:text-slate-500"
             />{" "}
             Ask a Question (Streaming)
           </h3>
@@ -418,7 +475,7 @@ export default function ResultsView({
                 value={customQuestion}
                 onChange={(e) => setCustomQuestion(e.target.value)}
                 placeholder="Ask anything about the transcript..."
-                className="flex-grow px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-colors text-sm"
+                className="flex-grow px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-colors text-sm"
                 disabled={isStreamingAi || !transcriptionData.text}
               />
               <StyledButton
@@ -443,9 +500,8 @@ export default function ResultsView({
 
         {/* Display Area for AI Results and current streaming text */}
         <div className="mt-6 space-y-3">
-          {/* Display currently streaming text if any task is active */}
           {isStreamingAi && activeAiTask && (
-            <div className="p-4 border border-sky-300 rounded-lg bg-sky-50 text-sm text-slate-700 shadow-inner">
+            <div className="p-4 border border-sky-300 rounded-lg bg-sky-50 text-sm text-slate-700 dark:text-slate-200 shadow-inner">
               <h4 className="font-semibold mb-2 text-sky-600 flex items-center">
                 <Loader2 size={16} className="animate-spin mr-2" />
                 Generating {getTaskDisplayName(activeAiTask)}...
@@ -466,8 +522,6 @@ export default function ResultsView({
                     */}
             </div>
           )}
-
-          {/* Display global AI error if any, and not currently streaming something else */}
           {globalAiError && !isStreamingAi && (
             <div className="p-3 border border-red-300 rounded-lg bg-red-50 text-sm text-red-700">
               <p className="break-words">
@@ -480,33 +534,48 @@ export default function ResultsView({
           {aiResults.map((result) => (
             <div
               key={result.id}
-              className="border border-slate-300 rounded-lg shadow-sm overflow-hidden"
+              className={`border dark:border-slate-700 rounded-lg shadow-sm overflow-hidden ${
+                result.id === newlyAddedResultId ? "ai-result-newly-added" : "" // Apply animation class
+              }`}
             >
               <button
                 onClick={() => toggleResultExpansion(result.id)}
-                className="w-full flex justify-between items-center p-3 text-left bg-slate-100 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-inset transition-colors"
+                className={`w-full flex justify-between items-center p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:focus-visible:ring-sky-400 focus-visible:ring-inset transition-colors rounded-t-lg ${
+                  result.id === newlyAddedResultId &&
+                  expandedResultId !== result.id
+                    ? "bg-sky-50 dark:bg-sky-900/30" // Slightly different bg for newly added but not expanded
+                    : expandedResultId === result.id
+                    ? "bg-slate-200 dark:bg-slate-600"
+                    : "bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600"
+                }`}
                 aria-expanded={expandedResultId === result.id}
                 aria-controls={`result-content-${result.id}`}
               >
-                <span className="font-semibold text-slate-800">
+                <span className="font-semibold text-slate-800 dark:text-slate-100">
                   {getTaskDisplayName(result.taskType)}
                 </span>
                 {expandedResultId === result.id ? (
-                  <ChevronUp size={20} className="text-slate-600" />
+                  <ChevronUp
+                    size={20}
+                    className="text-slate-600 dark:text-slate-400"
+                  />
                 ) : (
-                  <ChevronDown size={20} className="text-slate-600" />
+                  <ChevronDown
+                    size={20}
+                    className="text-slate-600 dark:text-slate-400"
+                  />
                 )}
               </button>
               {expandedResultId === result.id && (
                 <div
                   id={`result-content-${result.id}`}
-                  className="p-4 border-t border-slate-300 bg-white"
+                  className="p-4 border-t border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
                 >
                   {result.wasTruncated && (
-                    <div className="mb-3 p-2.5 text-xs bg-amber-50 text-amber-700 border border-amber-300 rounded-md flex items-center space-x-2">
+                    <div className="mb-3 p-2.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-600 rounded-md flex items-center space-x-2">
                       <AlertCircle
                         size={16}
-                        className="flex-shrink-0 text-amber-500"
+                        className="flex-shrink-0 text-amber-500 dark:text-amber-400"
                       />
                       <span>
                         Note: The AI processed a shortened version of the
@@ -516,12 +585,12 @@ export default function ResultsView({
                     </div>
                   )}
                   {result.error ? (
-                    <p className="text-red-600 break-words">
+                    <p className="text-red-600 dark:text-red-400 break-words">
                       <strong>Error generating this result:</strong>{" "}
                       {result.error}
                     </p>
                   ) : (
-                    <div className="whitespace-pre-wrap break-words text-sm text-slate-700">
+                    <div className="whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-200">
                       {result.text}
                     </div>
                   )}
@@ -534,7 +603,7 @@ export default function ResultsView({
                         !result.error &&
                         navigator.clipboard.writeText(result.text)
                       }
-                      className="text-sky-600 hover:bg-sky-100 disabled:text-slate-400"
+                      className="text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-700/30 disabled:text-slate-400 dark:disabled:text-slate-500"
                       disabled={!result.text || !!result.error}
                     >
                       <ClipboardCopy size={14} className="mr-1.5" /> Copy
@@ -543,7 +612,7 @@ export default function ResultsView({
                       size="sm"
                       variant="ghost"
                       onClick={() => handleRemoveResult(result.id)}
-                      className="text-slate-500 hover:text-red-600 hover:bg-red-50"
+                      className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-700/20"
                     >
                       <XCircle size={14} className="mr-1.5" /> Clear
                     </StyledButton>
@@ -554,7 +623,7 @@ export default function ResultsView({
           ))}
         </div>
       </div>
-
+      {/* ... Footer Buttons ... */}
       <div className="flex justify-center mb-6">
         <StyledButton
           onClick={zipAll}
@@ -575,7 +644,7 @@ export default function ResultsView({
       >
         New Transcription
       </StyledButton>
-      <p className="text-xs text-slate-500 text-center">
+      <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
         Transcription completed using <strong>{modeLabel(mode)}</strong> mode.
       </p>
     </div>

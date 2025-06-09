@@ -12,6 +12,7 @@ import {
 import { TranscriptionMode } from "@/components/ConfirmationView";
 import { StageDisplayData } from "@/components/ProcessingView";
 import { useStageUpdater } from "./useStageUpdater";
+import { useStepper } from "../contexts/StepperContext";
 
 interface Props {
   ffmpeg: FFmpeg | null; // Renamed in calling component to ffmpegFromProp for clarity if preferred
@@ -21,7 +22,6 @@ interface Props {
   onStagesUpdate: (
     s: StageDisplayData[] | ((p: StageDisplayData[]) => StageDisplayData[])
   ) => void;
-  onStepChange?: (id: "configure" | "process" | "transcribe") => void;
 }
 
 export function useClientFileProcessor({
@@ -30,15 +30,15 @@ export function useClientFileProcessor({
   onError,
   onStatusUpdate,
   onStagesUpdate,
-  onStepChange,
 }: Props) {
+  const { setStep } = useStepper();
   const [busy, setBusy] = useState(false);
   const patch = useStageUpdater(onStagesUpdate);
 
   const processFile = useCallback(
     async (file: File, mode: TranscriptionMode, isDirectAudio: boolean) => {
       setBusy(true);
-      onStepChange?.("process");
+      setStep("process");
 
       let audioBlob: Blob;
       const originalFileName = file.name;
@@ -145,7 +145,7 @@ export function useClientFileProcessor({
       }
 
       // --- Common part: Groq Transcription ---
-      onStepChange?.("transcribe");
+      setStep?.("transcribe");
       const modelName = mode === "turbo" ? "Whisper Large v3" : "Distil-Whisper Large-v3-en";
       onStatusUpdate("AI is transcribing your audio…");
       patch("groq", { isActive: true, isIndeterminate: true, subText: `Processing using Groq's ${modelName} model` });
@@ -167,8 +167,9 @@ export function useClientFileProcessor({
       patch("groq", { isIndeterminate: false, progress: 1, isActive: false, isComplete: true, subText: `Processed with Groq's ${modelName} model` });
       onProcessingComplete(res.data);
       setBusy(false);
+      setStep("transcribe");
     },
-    [ffmpegFromProp, onError, onProcessingComplete, onStatusUpdate, onStagesUpdate, patch, onStepChange] // Added ffmpegFromProp to dependency array
+    [setStep, onStatusUpdate, patch, onProcessingComplete, ffmpegFromProp, onError, onStagesUpdate] // Added ffmpegFromProp to dependency array
   );
 
   return { processFile, isProcessing: busy };

@@ -27,7 +27,7 @@ const StyledButton: React.FC<StyledButtonProps> = ({
     primary:
       "bg-sky-600 text-white hover:bg-sky-700 focus-visible:ring-sky-500 disabled:bg-sky-300",
     secondary:
-      "bg-slate-200 text-slate-700 hover:bg-slate-300 focus-visible:ring-slate-400 disabled:bg-slate-100 disabled:text-slate-400",
+      "bg-slate-200 text-slate-700 dark:text-slate-200 hover:bg-slate-300 focus-visible:ring-slate-400 disabled:bg-slate-100 disabled:text-slate-400",
     danger:
       "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500 disabled:bg-red-300",
     ghost:

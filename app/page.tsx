@@ -21,18 +21,14 @@ import {useServerLinkProcessor} from "./hooks/useServerLinkProcessor";
 import {useClientFileProcessor} from "./hooks/useClientFileProcessor";
 import {useServerFileUploadProcessor} from "./hooks/useServerFileUploadProcessor";
 
-export interface AppStep {
-  id: "configure" | "process" | "transcribe";
-  name: string;
-  icon: React.ElementType;
-}
+import type {AppStep, SelectedInputType} from "@/types/app";
+import {StepperProvider, useStepper} from "./contexts/StepperContext";
+
 const APP_STEPS: AppStep[] = [
   {id: "configure", name: "Configure", icon: Settings},
   {id: "process", name: "Process Audio", icon: Waves},
   {id: "transcribe", name: "Get Transcripts", icon: FileText},
 ];
-
-export type SelectedInputType = "video" | "audio" | "link"; // ADDED "audio"
 
 enum ViewState {
   SelectingInput,
@@ -175,14 +171,18 @@ const getUserFriendlyErrorMessage = (
   return "Oops! Something went wrong during processing. Please try again. If the problem continues, the file might be unsuitable.";
 };
 
-export default function HomePage() {
+/* ======================================================================== */
+function HomePageInner() {
+  const {setStep, step} = useStepper();
+
+  // ───────────────────────── local UI state (unchanged except currentAppStepId removed)
   const [currentView, setCurrentView] = useState<ViewState>(
     ViewState.SelectingInput
   );
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [submittedLink, setSubmittedLink] = useState<string | null>(null);
   const [selectedInputType, setSelectedInputType] =
-    useState<SelectedInputType | null>(null); // MODIFIED: Added
+    useState<SelectedInputType | null>(null);
 
   const [ffmpeg, setFfmpeg] = useState<FFmpeg | null>(null);
   const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("chill");
@@ -193,17 +193,15 @@ export default function HomePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transcriptionData, setTranscriptionData] =
     useState<DetailedTranscriptionResult | null>(null);
-  const [currentAppStepId, setCurrentAppStepId] =
-    useState<AppStep["id"]>("configure");
 
   const handleProcessingComplete = useCallback(
     (data: DetailedTranscriptionResult) => {
       setTranscriptionData(data);
       setCurrentOverallStatus("Transcription complete!");
       setCurrentView(ViewState.ShowingResults);
-      setCurrentAppStepId("transcribe"); // Ensure step is updated
+      setStep("transcribe"); // Ensure step is updated
     },
-    []
+    [setStep]
   );
 
   const handleError = useCallback(
@@ -233,14 +231,19 @@ export default function HomePage() {
     },
     []
   );
+  /* ==================================================================== */
+  // (all helper callbacks are identical to your last version, but every place
+  //  that previously called `setCurrentAppStepId("process")` etc. now calls
+  //  `setStep("process")` instead.)
+  /* ===================================================================== */
 
+  /* processing hooks ----------------------------------------------------- */
   const {processFile: processClientFile} = useClientFileProcessor({
     ffmpeg,
     onProcessingComplete: handleProcessingComplete,
     onError: (m, f, sz) => handleError("Client File Processing", m, f, sz),
     onStatusUpdate: handleStatusUpdate,
     onStagesUpdate: handleStagesUpdate,
-    onStepChange: setCurrentAppStepId,
   });
 
   const {processLink: processServerLink} = useServerLinkProcessor({
@@ -248,7 +251,6 @@ export default function HomePage() {
     onError: (m) => handleError("Server Link Processing", m),
     onStatusUpdate: handleStatusUpdate,
     onStagesUpdate: handleStagesUpdate,
-    onStepChange: setCurrentAppStepId,
   });
 
   const {processFile: processServerUploadedFile} = useServerFileUploadProcessor(
@@ -257,7 +259,6 @@ export default function HomePage() {
       onError: (m, f, sz) => handleError("Server File Upload", m, f, sz),
       onStatusUpdate: handleStatusUpdate,
       onStagesUpdate: handleStagesUpdate,
-      onStepChange: setCurrentAppStepId,
     }
   );
 
@@ -320,8 +321,8 @@ export default function HomePage() {
     setErrorMessage(null);
     setTranscriptionData(null);
     setCurrentView(ViewState.SelectingInput);
-    setCurrentAppStepId("configure"); // MODIFIED: Reset step
-  }, []);
+    setStep("configure"); // MODIFIED: Reset step
+  }, [setStep]);
 
   const handleFileSelected = (file: File) => {
     // MODIFIED
@@ -340,7 +341,7 @@ export default function HomePage() {
       );
       return; // Important to return here so we don't proceed to ConfirmationView
     }
-    setCurrentAppStepId("configure"); // Ensure we are back at configure step
+    setStep("configure"); // Ensure we are back at configure step
     setCurrentView(ViewState.ConfirmingInput);
   };
 
@@ -348,7 +349,7 @@ export default function HomePage() {
     setSubmittedLink(link);
     setSelectedFile(null);
     setSelectedInputType("link");
-    setCurrentAppStepId("configure");
+    setStep("configure");
     setCurrentView(ViewState.ConfirmingInput);
   };
 
@@ -357,7 +358,6 @@ export default function HomePage() {
     mode: TranscriptionMode
   ) => {
     setSelectedMode(mode);
-    // setCurrentAppStepId("process"); // This is now set within each processor hook via onStepChange
 
     if (selectedInputType === "link" && submittedLink) {
       setCurrentView(ViewState.ProcessingServer);
@@ -384,6 +384,7 @@ export default function HomePage() {
     }
   };
 
+  /* render --------------------------------------------------------------- */
   const renderCurrentView = () => {
     switch (currentView) {
       case ViewState.SelectingInput:
@@ -410,7 +411,7 @@ export default function HomePage() {
             stages={processingUIStages}
             currentOverallStatusMessage={currentOverallStatus}
             appSteps={APP_STEPS}
-            currentAppStepId={currentAppStepId}
+            currentAppStepId={step}
           />
         );
       case ViewState.ShowingResults:
@@ -429,7 +430,7 @@ export default function HomePage() {
             <h2 className="text-xl font-semibold text-red-600 mb-4">
               An Error Occurred
             </h2>
-            <p className="text-slate-700 mb-6 break-words">
+            <p className="text-slate-700 dark:text-slate-200 mb-6 break-words">
               {" "}
               {/* Added break-words */}
               {errorMessage ?? "An unspecified error occurred."}
@@ -444,5 +445,15 @@ export default function HomePage() {
     }
   };
 
-  return <PageLayout>{renderCurrentView()}</PageLayout>;
+  return renderCurrentView();
+}
+
+export default function HomePage() {
+  return (
+    <StepperProvider>
+      <PageLayout>
+        <HomePageInner />
+      </PageLayout>
+    </StepperProvider>
+  );
 }

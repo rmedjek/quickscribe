@@ -122,7 +122,7 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
   };
 
   return (
-    <div className="bg-white w-full max-w-md sm:max-w-lg mx-auto rounded-2xl shadow-xl p-6 sm:p-8 space-y-6">
+    <div className="bg-white dark:bg-slate-800 dark:text-slate-200 w-full max-w-md sm:max-w-lg mx-auto rounded-2xl shadow-xl p-6 sm:p-8 space-y-6">
       <div className="text-center mb-8">
         <h1 className="text-4xl sm:text-5xl font-bold text-slate-900">
           QuickScribe{" "}
@@ -136,7 +136,7 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
                     ${
                       isDragging
                         ? "border-sky-500 bg-sky-50"
-                        : "border-slate-300 hover:border-sky-400"
+                        : "border-slate-300 dark:border-slate-600 hover:border-sky-400"
                     }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -172,16 +172,16 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
       </div>
 
       <div className="my-6 flex items-center">
-        <hr className="flex-grow border-slate-300" />
+        <hr className="flex-grow border-slate-300 dark:border-slate-600" />
         <span className="px-3 text-slate-500 text-sm">OR</span>
-        <hr className="flex-grow border-slate-300" />
+        <hr className="flex-grow border-slate-300 dark:border-slate-600" />
       </div>
 
       <div>
         <form onSubmit={handleLinkSubmit} className="space-y-3">
           <label
             htmlFor="videoLinkInput"
-            className="block text-sm font-medium text-slate-700 mb-1"
+            className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1"
           >
             Enter Video Link (e.g., YouTube, Vimeo, Direct URL){" "}
             {/* Link section remains video-focused */}
@@ -193,7 +193,7 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
               value={linkUrl}
               onChange={handleLinkInputChange}
               placeholder="https://example.com/video.mp4"
-              className="flex-grow px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-colors"
+              className="flex-grow px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-colors"
               aria-describedby={linkError ? "link-input-error" : undefined}
             />
             <StyledButton
