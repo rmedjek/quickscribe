@@ -9,13 +9,12 @@ import {
   CloudCog,
   Zap,
   Snowflake,
-  Settings,
-  Waves,
   Music, // Icon for Audio
   Video, // Icon for Video
 } from "lucide-react";
+import { APP_STEPS } from "@/types/app";
 import StyledButton from "./StyledButton";
-import ProgressStepper, {Step as AppProgressStep} from "./ProgressStepper"; // Use existing Step type
+import ProgressStepper from "./ProgressStepper";
 import {SelectedInputType} from "@/types/app";
 
 const MAX_CLIENT_SIZE_BYTES = 200 * 1024 * 1024; // 200MB example
@@ -32,13 +31,7 @@ interface ConfirmationViewProps {
   onCancel: () => void;
 }
 
-// Define Stepper steps (can also be passed as props if they vary)
-const APP_STEPS: AppProgressStep[] = [
-  // Renamed Step to AppProgressStep to avoid conflict if needed
-  {id: "configure", name: "Configure", icon: Settings},
-  {id: "process", name: "Process Audio", icon: Waves},
-  {id: "transcribe", name: "Get Transcripts", icon: FileText},
-];
+// Step definitions used by the shared progress stepper
 
 const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   file,

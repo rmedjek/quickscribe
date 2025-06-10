@@ -3,9 +3,6 @@
 
 import React, {useState, useRef, useEffect} from "react";
 import {
-  Waves,
-  Settings,
-  FileText,
   CheckCircle2,
   ClipboardCopy,
   Download,
@@ -31,17 +28,9 @@ import {
   AIInteractionTaskType,
   AIInteractionParams,
 } from "@/actions/interactWithTranscriptAction";
+import { APP_STEPS } from "@/types/app";
+import type { AppStep } from "@/types/app";
 
-interface Step {
-  id: string;
-  name: string;
-  icon: React.ElementType;
-}
-const STEPS: Step[] = [
-  {id: "configure", name: "Configure", icon: Settings},
-  {id: "process", name: "Process Audio", icon: Waves},
-  {id: "transcribe", name: "Get Transcripts", icon: FileText},
-];
 
 const modeLabel = (m: TranscriptionMode) => (m === "turbo" ? "Turbo" : "Chill");
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
@@ -312,7 +301,7 @@ export default function ResultsView({
           Powered by Groq
         </p>
       </div>
-      <GrayProgressStepper steps={STEPS} />
+      <GrayProgressStepper steps={APP_STEPS} />
       <div className="flex justify-center my-6">
         <CheckCircle2 size={72} className="text-gray-500 dark:text-slate-400" />
       </div>
@@ -651,7 +640,7 @@ export default function ResultsView({
   );
 }
 
-function GrayProgressStepper({steps}: {steps: Step[]}) {
+function GrayProgressStepper({steps}: {steps: AppStep[]}) {
   return (
     <nav aria-label="Progress" className="mb-8">
       <ol role="list" className="relative flex items-start justify-between">

@@ -2,7 +2,7 @@
 "use client";
 
 import React, {useState, useCallback, useEffect} from "react";
-import {Settings, Waves, FileText} from "lucide-react";
+import { APP_STEPS } from "@/types/app";
 
 import PageLayout from "@/components/PageLayout";
 import InputSelectionView from "@/components/InputSelectionView";
@@ -21,14 +21,8 @@ import {useServerLinkProcessor} from "./hooks/useServerLinkProcessor";
 import {useClientFileProcessor} from "./hooks/useClientFileProcessor";
 import {useServerFileUploadProcessor} from "./hooks/useServerFileUploadProcessor";
 
-import type {AppStep, SelectedInputType} from "@/types/app";
+import type { SelectedInputType } from "@/types/app";
 import {StepperProvider, useStepper} from "./contexts/StepperContext";
-
-const APP_STEPS: AppStep[] = [
-  {id: "configure", name: "Configure", icon: Settings},
-  {id: "process", name: "Process Audio", icon: Waves},
-  {id: "transcribe", name: "Get Transcripts", icon: FileText},
-];
 
 enum ViewState {
   SelectingInput,
