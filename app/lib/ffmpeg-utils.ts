@@ -96,17 +96,25 @@ export async function extractAudio({
         throw new Error("[extractAudio] FFmpeg instance is not available or not loaded.");
     }
 
-    // For specific exec operations, it's better to set and clear listeners per exec
-    // if the FFmpeg library doesn't robustly support multiple listeners or easy removal by reference.
-    let operationProgressListener: ((data: FFmpegProgressData) => void) | null = null;
-    if (onProgress && typeof ffmpegToUse.on === 'function') {
-        operationProgressListener = (progressData) => { // progressData should be FFmpegProgressData
-             if ('progress' in progressData && typeof progressData.progress === 'number') {
-                onProgress(progressData.progress);
-            }
-        };
-        ffmpegToUse.on('progress', operationProgressListener);
-    }
+  // For specific exec operations, set and clear listeners per exec
+  // to avoid accumulating callbacks across multiple conversions.
+  const supportsOff = typeof (ffmpegToUse as any).off === 'function';
+  let operationProgressListener: ((data: FFmpegProgressData) => void) | null = null;
+
+  if (onProgress && typeof ffmpegToUse.on === 'function') {
+      operationProgressListener = (progressData) => {
+           if ('progress' in progressData && typeof progressData.progress === 'number') {
+              onProgress(progressData.progress);
+          }
+      };
+
+      const marker = '__qsProgressAttached';
+      const alreadyAttached = (ffmpegToUse as any)[marker];
+      if (supportsOff || !alreadyAttached) {
+          ffmpegToUse.on('progress', operationProgressListener);
+          (ffmpegToUse as any)[marker] = true;
+      }
+  }
     // Similarly for operation-specific logs if needed beyond the global console log:
     // let operationLogListener: ((data: FFmpegLogData) => void) | null = null;
     // if (onLog && typeof ffmpegToUse.on === 'function') {
@@ -137,8 +145,13 @@ export async function extractAudio({
     try {
       const exitCode = await ffmpegToUse.exec(args);
 
-      if (operationProgressListener && typeof ffmpegToUse.on === 'function') {
-          ffmpegToUse.on('progress', () => {}); // "Deregister" by setting an empty handler
+      if (operationProgressListener) {
+          if (supportsOff) {
+              (ffmpegToUse as any).off('progress', operationProgressListener);
+          } else if (typeof ffmpegToUse.on === 'function') {
+              // Fall back to setting an empty handler if .off() is unavailable
+              ffmpegToUse.on('progress', () => {});
+          }
       }
       // if (operationLogListener && typeof ffmpegToUse.on === 'function') {
       //     ffmpegToUse.on('log', () => {}); // Deregister log if it was operation specific
@@ -177,8 +190,12 @@ export async function extractAudio({
       return new Blob([data], { type: `audio/${outputFormat}` });
 
     } catch (error) {
-      if (operationProgressListener && typeof ffmpegToUse.on === 'function') {
-          ffmpegToUse.on('progress', () => {});
+      if (operationProgressListener) {
+          if (supportsOff) {
+              (ffmpegToUse as any).off('progress', operationProgressListener);
+          } else if (typeof ffmpegToUse.on === 'function') {
+              ffmpegToUse.on('progress', () => {});
+          }
       }
       // if (operationLogListener && typeof ffmpegToUse.on === 'function') {
       //     ffmpegToUse.on('log', () => {});
