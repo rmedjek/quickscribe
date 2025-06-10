@@ -1,5 +1,6 @@
 // types/app.ts
 import type { ElementType } from "react";
+import { Settings, Waves, FileText } from "lucide-react";
 // ---------------------------------------------------------------------
 //  Common, shareable application‑level types.
 // ---------------------------------------------------------------------
@@ -21,3 +22,9 @@ export interface AppStep {
   name: string;
   icon: ElementType;
 }
+
+export const APP_STEPS: AppStep[] = [
+  { id: "configure", name: "Configure", icon: Settings },
+  { id: "process", name: "Process Audio", icon: Waves },
+  { id: "transcribe", name: "Get Transcripts", icon: FileText },
+];
