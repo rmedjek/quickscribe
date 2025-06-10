@@ -34,3 +34,7 @@ npm test
 ## Deployment
 
 Run `npm run build` for a production build or `npm run vercel-build` when deploying to Vercel. The latter installs `ffmpeg` and `yt-dlp` before running the Next.js build. Ensure the same environment variables are configured in your hosting platform.
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## FFmpeg Listener Cleanup
+To avoid memory leaks when performing multiple conversions, progress listeners are now detached after each FFmpeg `exec` when the library supports an `off()` method. When `off()` is unavailable, the implementation tracks whether a listener was already attached to prevent duplicates.
