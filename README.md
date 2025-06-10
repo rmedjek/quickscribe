@@ -34,3 +34,6 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## FFmpeg Listener Cleanup
+To avoid memory leaks when performing multiple conversions, progress listeners are now detached after each FFmpeg `exec` when the library supports an `off()` method. When `off()` is unavailable, the implementation tracks whether a listener was already attached to prevent duplicates.
