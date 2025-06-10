@@ -17,6 +17,8 @@ import {
   ChevronUp,
   XCircle,
   Trash2,
+  Copy as CopyIcon,
+  CopyCheck as CopyCheckIcon,
 } from "lucide-react";
 import StyledButton from "./StyledButton";
 import DownloadButton from "./DownloadButton";
@@ -28,9 +30,8 @@ import {
   AIInteractionTaskType,
   AIInteractionParams,
 } from "@/actions/interactWithTranscriptAction";
-import { APP_STEPS } from "@/types/app";
-import type { AppStep } from "@/types/app";
-
+import {APP_STEPS} from "@/types/app";
+import type {AppStep} from "@/types/app";
 
 const modeLabel = (m: TranscriptionMode) => (m === "turbo" ? "Turbo" : "Chill");
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
@@ -42,6 +43,26 @@ interface AiResultItem {
   wasTruncated: boolean;
   error?: string;
 }
+
+// Helper to identify tasks that should be rendered as lists
+const LIST_TASK_TYPES = new Set<AIInteractionTaskType>([
+  "extract_key_points",
+  "extract_action_items",
+]);
+
+// Helper to parse LLM's list output into an array of strings
+const parseListItems = (text: string): string[] => {
+  if (!text) return [];
+  const potentialItems = text
+    .split("\n")
+    .filter((line) => /^\s*(\*|-|\d+\.)\s+/.test(line));
+  if (potentialItems.length > 0) {
+    return potentialItems.map((line) =>
+      line.replace(/^\s*(\*|-|\d+\.)\s+/, "").trim()
+    );
+  }
+  return text.split("\n").filter((line) => line.trim() !== "");
+};
 
 interface Props {
   transcriptionData: DetailedTranscriptionResult;
@@ -66,11 +87,10 @@ export default function ResultsView({
   const [expandedResultId, setExpandedResultId] = useState<string | null>(null);
   const [customQuestion, setCustomQuestion] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  // For the visual cue on newly added result
   const [newlyAddedResultId, setNewlyAddedResultId] = useState<string | null>(
     null
   );
+  const [copiedListItemId, setCopiedListItemId] = useState<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -80,12 +100,11 @@ export default function ResultsView({
     };
   }, []);
 
-  // Effect to remove the highlight after a delay for newly added results
   useEffect(() => {
     if (newlyAddedResultId) {
       const timer = setTimeout(() => {
         setNewlyAddedResultId(null);
-      }, 1500); // Duration should match your CSS animation
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [newlyAddedResultId]);
@@ -131,10 +150,8 @@ export default function ResultsView({
       case "extract_action_items":
         return "Action Items";
       default:
-        console.warn(
-          `[ResultsView] Unhandled AIInteractionTaskType in getTaskDisplayName: ${taskType}`
-        );
-        return "AI Generated Result";
+        console.warn(`Unhandled task type: ${taskType}`);
+        return "AI Result";
     }
   };
 
@@ -169,11 +186,6 @@ export default function ResultsView({
         taskType === "custom_question" ? questionForTask : undefined,
     };
 
-    body.transcriptText = transcriptionData.text;
-    body.taskType = taskType;
-    body.customPrompt =
-      taskType === "custom_question" ? questionForTask : undefined;
-
     try {
       const response = await fetch(AI_INTERACTION_API_ENDPOINT, {
         method: "POST",
@@ -181,7 +193,6 @@ export default function ResultsView({
         body: JSON.stringify(body),
         signal: abortControllerRef.current.signal,
       });
-      // Not directly setting body here, but JSON.stringify(body) will be used
 
       if (response.headers.get("X-Content-Truncated") === "true") {
         taskWasTruncated = true;
@@ -204,11 +215,8 @@ export default function ResultsView({
       const decoder = new TextDecoder();
       let accumulatedText = "";
 
+      // Re-architected this loop to be inside the async function directly
       while (true) {
-        if (abortControllerRef.current?.signal.aborted) {
-          console.log("Stream processing loop aborted for task:", taskType);
-          throw new Error("STREAM_ABORTED_BY_NEW_REQUEST");
-        }
         try {
           const {done, value} = await reader.read();
           if (done) break;
@@ -222,40 +230,34 @@ export default function ResultsView({
               "Error reading stream: " + (err.message || "Unknown stream error")
             );
           } else {
-            console.log("Stream reading aborted by client/controller.");
+            console.log("Stream reading aborted by controller.");
           }
-          throw streamError; // Re-throw to be caught by outer catch
+          throw streamError;
         }
       }
 
-      await (async function processStream() {
-        /* ... your existing processStream logic ... */
-      })(); // IIFE to keep it async
-
+      // This code now runs after the while loop (stream) has finished
       if (!abortControllerRef.current?.signal.aborted) {
         const newResultId = `${taskType}-${Date.now()}`;
-        const newResult: AiResultItem = {
-          id: newResultId,
-          taskType,
-          text: accumulatedText,
-          wasTruncated: taskWasTruncated,
-        };
-        setAiResults((prevResults) => [newResult, ...prevResults]);
+        setAiResults((prev) => [
+          {
+            id: newResultId,
+            taskType,
+            text: accumulatedText,
+            wasTruncated: taskWasTruncated,
+          },
+          ...prev,
+        ]);
         setExpandedResultId(newResultId);
         setNewlyAddedResultId(newResultId);
         if (taskType === "custom_question") setCustomQuestion("");
       }
     } catch (error: unknown) {
       const err = error as {message?: string; name?: string};
-      if (
-        err.message === "STREAM_ABORTED_BY_NEW_REQUEST" ||
-        err.name === "AbortError"
-      ) {
-        console.log(
-          `AI task ${activeAiTask} aborted by new request or navigation.`
-        );
-      } else {
+      if (err.name !== "AbortError") {
         setGlobalAiError(err.message || `Failed to process ${taskType} task.`);
+      } else {
+        console.log(`AI task ${activeAiTask} aborted.`);
       }
     } finally {
       setIsStreamingAi(false);
@@ -273,7 +275,7 @@ export default function ResultsView({
   const handleRemoveResult = (idToRemove: string) => {
     setAiResults((prev) => prev.filter((result) => result.id !== idToRemove));
     if (expandedResultId === idToRemove) {
-      setExpandedResultId(null); // Collapse if the expanded one is removed
+      setExpandedResultId(null);
     }
   };
 
@@ -281,18 +283,29 @@ export default function ResultsView({
     setExpandedResultId((prevId) => (prevId === id ? null : id));
   };
 
-  // NEW: Handler for Clearing All AI Results
   const handleClearAllAiResults = () => {
     setAiResults([]);
     setExpandedResultId(null);
     setGlobalAiError(null);
-    setNewlyAddedResultId(null); // Also clear this
-    // We won't stop an actively streaming task with this button for now
+    setNewlyAddedResultId(null);
+  };
+
+  const handleCopyListItem = (
+    itemText: string,
+    resultId: string,
+    itemIndex: number
+  ) => {
+    navigator.clipboard.writeText(itemText).then(() => {
+      const uniqueId = `${resultId}-${itemIndex}`;
+      setCopiedListItemId(uniqueId);
+      setTimeout(() => {
+        setCopiedListItemId((prevId) => (prevId === uniqueId ? null : prevId));
+      }, 2000);
+    });
   };
 
   return (
     <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700 dark:text-slate-200">
-      {/* ... Header, Stepper, Main Title, Transcript Display, Download Buttons ... (Keep your existing code) */}
       <div className="text-center mb-6">
         <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-50">
           QuickScribe
@@ -308,6 +321,7 @@ export default function ResultsView({
       <h2 className="text-center text-xl font-semibold text-slate-900 dark:text-slate-50 mb-6">
         Transcripts generated successfully!
       </h2>
+
       <div className="relative mb-8">
         <button
           onClick={copyText}
@@ -327,6 +341,7 @@ export default function ResultsView({
           {transcriptionData.text}
         </div>
       </div>
+
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <DownloadButton
           label="TXT"
@@ -360,10 +375,7 @@ export default function ResultsView({
 
       {/* --- AI Interaction Section --- */}
       <div className="my-8 py-6 border-t border-b border-slate-200 dark:border-slate-700 space-y-6">
-        {/* MODIFIED: Header for AI Tools with Clear All button */}
         <div className="flex justify-between items-center mb-0">
-          {" "}
-          {/* Reduced mb if tools are directly below */}
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
             AI Insights & Tools
           </h3>
@@ -505,10 +517,6 @@ export default function ResultsView({
                   Waiting for AI response to start streaming...
                 </p>
               )}
-              {/* Truncation note for actively streaming task */}
-              {/* We need to get wasTruncated for the active stream. This is tricky.
-                        Let's assume the note appears with the final result for now.
-                    */}
             </div>
           )}
           {globalAiError && !isStreamingAi && (
@@ -524,7 +532,7 @@ export default function ResultsView({
             <div
               key={result.id}
               className={`border dark:border-slate-700 rounded-lg shadow-sm overflow-hidden ${
-                result.id === newlyAddedResultId ? "ai-result-newly-added" : "" // Apply animation class
+                result.id === newlyAddedResultId ? "ai-result-newly-added" : ""
               }`}
             >
               <button
@@ -532,7 +540,7 @@ export default function ResultsView({
                 className={`w-full flex justify-between items-center p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:focus-visible:ring-sky-400 focus-visible:ring-inset transition-colors rounded-t-lg ${
                   result.id === newlyAddedResultId &&
                   expandedResultId !== result.id
-                    ? "bg-sky-50 dark:bg-sky-900/30" // Slightly different bg for newly added but not expanded
+                    ? "bg-sky-50 dark:bg-sky-900/30"
                     : expandedResultId === result.id
                     ? "bg-slate-200 dark:bg-slate-600"
                     : "bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600"
@@ -561,7 +569,7 @@ export default function ResultsView({
                   className="p-4 border-t border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
                 >
                   {result.wasTruncated && (
-                    <div className="mb-3 p-2.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-600 rounded-md flex items-center space-x-2">
+                    <div className="mb-3 p-2.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-300 dark:text-amber-700 border border-amber-300 dark:border-amber-600 rounded-md flex items-center space-x-2">
                       <AlertCircle
                         size={16}
                         className="flex-shrink-0 text-amber-500 dark:text-amber-400"
@@ -573,16 +581,55 @@ export default function ResultsView({
                       </span>
                     </div>
                   )}
-                  {result.error ? (
+
+                  {!result.error &&
+                    result.text &&
+                    (LIST_TASK_TYPES.has(result.taskType) ? (
+                      <ul className="space-y-2.5">
+                        {parseListItems(result.text).map((item, index) => {
+                          const uniqueItemId = `${result.id}-${index}`;
+                          const isCopied = copiedListItemId === uniqueItemId;
+                          return (
+                            <li
+                              key={uniqueItemId}
+                              className="group flex items-start text-sm text-slate-700 dark:text-slate-200"
+                            >
+                              <span className="mr-2.5 mt-0.5 text-sky-500 dark:text-sky-400">
+                                •
+                              </span>
+                              <span className="flex-grow">{item}</span>
+                              <button
+                                onClick={() =>
+                                  handleCopyListItem(item, result.id, index)
+                                }
+                                className="ml-2 p-1 rounded-md text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity"
+                                title="Copy item"
+                              >
+                                {isCopied ? (
+                                  <CopyCheckIcon
+                                    size={16}
+                                    className="text-green-500"
+                                  />
+                                ) : (
+                                  <CopyIcon size={16} />
+                                )}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-200">
+                        {result.text}
+                      </div>
+                    ))}
+                  {result.error && (
                     <p className="text-red-600 dark:text-red-400 break-words">
                       <strong>Error generating this result:</strong>{" "}
                       {result.error}
                     </p>
-                  ) : (
-                    <div className="whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-200">
-                      {result.text}
-                    </div>
                   )}
+
                   <div className="mt-4 flex justify-end space-x-2">
                     <StyledButton
                       size="sm"
@@ -595,7 +642,7 @@ export default function ResultsView({
                       className="text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-700/30 disabled:text-slate-400 dark:disabled:text-slate-500"
                       disabled={!result.text || !!result.error}
                     >
-                      <ClipboardCopy size={14} className="mr-1.5" /> Copy
+                      <ClipboardCopy size={14} className="mr-1.5" /> Copy All
                     </StyledButton>
                     <StyledButton
                       size="sm"
@@ -612,6 +659,7 @@ export default function ResultsView({
           ))}
         </div>
       </div>
+
       {/* ... Footer Buttons ... */}
       <div className="flex justify-center mb-6">
         <StyledButton

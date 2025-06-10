@@ -1,87 +1,102 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// app/lib/api-utils.ts
 import Groq from 'groq-sdk';
 
-const MAX_RETRIES = 3;
-const INITIAL_BACKOFF_MS = 1000; // 1 second
-const MAX_BACKOFF_MS = 30000;   // 30 seconds
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_INITIAL_BACKOFF_MS = 1500; // Increased slightly to give servers more breathing room
+const DEFAULT_MAX_BACKOFF_MS = 45000;   // 45 seconds
 
-async function delay(ms: number): Promise<void> {
+export async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-interface RetryConfig<T> {
+export interface RetryConfig<T> {
   operationName: string;
-  operation: () => Promise<T>; // The actual API call
-  isRetryableError?: (error: unknown) => boolean; // Optional custom check
+  operation: () => Promise<T>;
+  isRetryableError?: (error: any) => boolean;
   maxRetries?: number;
   initialBackoffMs?: number;
   maxBackoffMs?: number;
 }
 
+// --- Helper functions for error classification ---
+
+function isRetryableNetworkError(error: any): boolean {
+  const errorCode = error?.code || (error?.cause as any)?.code;
+  const retryableErrorCodes = [
+    'ECONNRESET',    // Connection forcibly closed
+    'ETIMEDOUT',     // Connection timed out
+    'ENOTFOUND',     // DNS lookup failed
+    'ECONNREFUSED',  // Connection refused
+    'EAI_AGAIN',     // DNS lookup timed out
+  ];
+  if (retryableErrorCodes.includes(errorCode)) {
+    console.log(`[RetryUtil] Detected retryable network error code: ${errorCode}`);
+    return true;
+  }
+  return false;
+}
+
+function isRetryableGroqError(error: any): boolean {
+  if (error instanceof Groq.APIConnectionError) {
+      console.log(`[RetryUtil] Detected retryable Groq.APIConnectionError.`);
+      return true;
+  }
+  if (error instanceof Groq.APIError) {
+    // Retry on 429 (Too Many Requests), 408 (Request Timeout), and all 5xx server errors
+    const retryableStatusCodes = [408, 429];
+    if (error.status && (retryableStatusCodes.includes(error.status) || error.status >= 500)) {
+      console.log(`[RetryUtil] Detected retryable Groq.APIError status code: ${error.status}`);
+      return true;
+    }
+  }
+  return false;
+}
+// --- End Helper functions ---
+
 export async function retryWithBackoff<T>({
   operationName,
   operation,
   isRetryableError,
-  maxRetries = MAX_RETRIES,
-  initialBackoffMs = INITIAL_BACKOFF_MS,
-  maxBackoffMs = MAX_BACKOFF_MS,
+  maxRetries = DEFAULT_MAX_RETRIES,
+  initialBackoffMs = DEFAULT_INITIAL_BACKOFF_MS,
+  maxBackoffMs = DEFAULT_MAX_BACKOFF_MS,
 }: RetryConfig<T>): Promise<T> {
   let attempts = 0;
   let currentBackoffMs = initialBackoffMs;
+  let lastError: any;
 
-  while (true) {
+  while (attempts <= maxRetries) {
     attempts++;
     try {
       console.log(`[RetryUtil] Attempt ${attempts}/${maxRetries + 1} for operation: "${operationName}"`);
       return await operation();
-    } catch (error: unknown) {
-      // TypeScript: error is unknown, so we need to safely access error.message
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`[RetryUtil] Operation "${operationName}" attempt ${attempts} failed. Error:`, errorMessage);
+    } catch (error: any) {
+      lastError = error; // Store the last error
+      console.warn(`[RetryUtil] Operation "${operationName}" attempt ${attempts} failed. Error: ${error.message || String(error)}`);
 
-      const defaultIsRetryable = (e: unknown): boolean => {
-        if (e instanceof Groq.APIConnectionError) { // Covers network issues like ECONNRESET if SDK throws this
-            console.log(`[RetryUtil] Retryable Groq.APIConnectionError for "${operationName}".`);
-            return true;
-        }
-        if (e instanceof Groq.APIError) {
-          if (e.status && (e.status === 429 || e.status === 408 || (e.status >= 500 && e.status < 600))) {
-            console.log(`[RetryUtil] Retryable Groq.APIError status ${e.status} for "${operationName}".`);
-            return true;
-          }
-        }
-        // Add more generic network error checks if needed, e.g., by looking at error.code
-        if (
-          typeof e === 'object' &&
-          e !== null &&
-          'code' in e &&
-          typeof (e as { code?: unknown }).code === 'string' &&
-          (
-            (e as { code: string }).code === 'ECONNRESET' ||
-            (e as { code: string }).code === 'ETIMEDOUT' ||
-            (e as { code: string }).code === 'ENOTFOUND' ||
-            (e as { code: string }).code === 'ECONNREFUSED'
-          )
-        ) {
-            console.log(`[RetryUtil] Retryable generic network error code ${(e as { code: string }).code} for "${operationName}".`);
-            return true;
-        }
-        return false;
-      };
-
-      const shouldRetry = isRetryableError ? isRetryableError(error) : defaultIsRetryable(error);
+      const shouldRetry = isRetryableError 
+        ? isRetryableError(error) 
+        : (isRetryableGroqError(error) || isRetryableNetworkError(error));
 
       if (attempts > maxRetries || !shouldRetry) {
-        console.error(`[RetryUtil] Max retries reached or error not retryable for "${operationName}". Giving up.`);
-        throw error; // Re-throw the last error
+        console.error(`[RetryUtil] Max retries (${maxRetries}) reached or error is not retryable for "${operationName}". Giving up.`);
+        throw lastError; // Re-throw the last encountered error
       }
 
-      const jitter = Math.random() * (currentBackoffMs * 0.2); // Add up to 20% jitter
-      const waitTime = Math.min(currentBackoffMs + jitter, maxBackoffMs);
+      // Calculate wait time with jitter (randomness to prevent thundering herd)
+      const jitter = Math.random() * currentBackoffMs * 0.5; // Jitter of up to 50% of the backoff
+      const waitTime = Math.min(Math.round(currentBackoffMs + jitter), maxBackoffMs);
       
-      console.log(`[RetryUtil] Retrying operation "${operationName}" in ${waitTime.toFixed(0)}ms...`);
+      console.log(`[RetryUtil] Retrying operation "${operationName}" in ${waitTime}ms... (Backoff: ${Math.round(currentBackoffMs)}ms, Jitter: ${Math.round(jitter)}ms)`);
       await delay(waitTime);
 
-      currentBackoffMs = Math.min(currentBackoffMs * 2, maxBackoffMs); // Exponential backoff
+      // Increase backoff for next potential retry (exponential)
+      currentBackoffMs *= 2;
     }
   }
+
+  // This should not be reached due to the throw in the loop, but as a fallback:
+  console.error(`[RetryUtil] Exited retry loop unexpectedly for "${operationName}".`);
+  throw lastError;
 }
