@@ -37,7 +37,7 @@ export function useServerFileUploadProcessor({
   const processFile = useCallback(
     async (file: File, mode: TranscriptionMode, isDirectAudio: boolean) => {
       setBusy(true);
-      setStep?.("process"); // Move to "Process Audio" step
+      setStep?.("process");
 
       let audioBlobForGroq: Blob;
       const originalFileName = file.name;

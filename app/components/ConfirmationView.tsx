@@ -12,7 +12,7 @@ import {
   Music, // Icon for Audio
   Video, // Icon for Video
 } from "lucide-react";
-import { APP_STEPS } from "@/types/app";
+import {APP_STEPS} from "@/types/app";
 import StyledButton from "./StyledButton";
 import ProgressStepper from "./ProgressStepper";
 import {SelectedInputType} from "@/types/app";
@@ -133,6 +133,15 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
               onClick={() =>
                 setSelectedMode(selectedMode === "chill" ? "turbo" : "chill")
               }
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelectedMode(selectedMode === "chill" ? "turbo" : "chill");
+                }
+              }}
+              role="switch"
+              aria-checked={selectedMode === "turbo"}
+              tabIndex={0}
             >
               <div
                 className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${
@@ -164,6 +173,15 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                     : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300"
                 }`}
                 onClick={() => setSelectedMode("chill")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedMode("chill");
+                  }
+                }}
+                role="radio"
+                aria-checked={selectedMode === "chill"}
+                tabIndex={0}
               >
                 <div className="flex items-center mb-1">
                   <Snowflake

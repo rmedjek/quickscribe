@@ -19,7 +19,7 @@ const groq = new Groq({
 //const DEFAULT_LLM_MODEL = "llama3-8b-8192";
 const DEFAULT_LLM_MODEL = "llama3-70b-8192";
 
-export type AIInteractionTaskType = "summarize" | "extract_key_points" | "custom_question" | "extract_action_items";
+export type AIInteractionTaskType = "summarize" | "extract_key_points" | "custom_question" | "extract_action_items" | "identify_topics";
 export interface AIInteractionParams { transcriptText: string; taskType: AIInteractionTaskType; customPrompt?: string; llmModel?: string; }
 type GroqMessage = Groq.Chat.Completions.ChatCompletionMessageParam;
 
@@ -76,6 +76,13 @@ export async function interactWithTranscriptAction(
       break;
     case "extract_action_items":
       systemPrompt = "You are an AI assistant specializing in identifying action items. Analyze the transcript and extract all explicit/implied action items, tasks, or commitments. For each, identify: 1. The action. 2. Who is responsible (if mentioned). 3. Any deadline (if mentioned). Present as a clear, numbered or bulleted list. If none, state 'No specific action items were identified.'";
+      break;
+    case "identify_topics":
+      systemPrompt =
+        "You are a helpful AI assistant. Your task is to analyze the following transcript and identify the main topics or subjects discussed. " +
+        "List up to 5-7 of the most significant topics. " +
+        "Present the topics as a simple bulleted list, with each topic being a short, concise phrase (2-5 words). " +
+        "If the transcript is too short or lacks clear topics, state 'No distinct topics could be identified.'";
       break;
     default:
       console.error(`[AI Action] Error: Unsupported AI task type: ${taskType}`);

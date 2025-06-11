@@ -141,6 +141,15 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onClick={handleCardClickToUpload}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleCardClickToUpload();
+          }
+        }}
+        role="button" // Inform screen readers this div acts like a button
+        tabIndex={0} // Make it focusable
       >
         <div className="flex flex-col items-center text-center space-y-3">
           <UploadCloud

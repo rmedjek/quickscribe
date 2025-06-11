@@ -8,6 +8,8 @@ import {
   Download,
   Brain,
   Loader2,
+  Hash,
+  RefreshCw,
   ListChecks,
   HelpCircle,
   Send,
@@ -48,6 +50,7 @@ interface AiResultItem {
 const LIST_TASK_TYPES = new Set<AIInteractionTaskType>([
   "extract_key_points",
   "extract_action_items",
+  "identify_topics",
 ]);
 
 // Helper to parse LLM's list output into an array of strings
@@ -149,6 +152,9 @@ export default function ResultsView({
         return "Q&A Answer";
       case "extract_action_items":
         return "Action Items";
+      case "identify_topics":
+        return "Identified Topics";
+
       default:
         console.warn(`Unhandled task type: ${taskType}`);
         return "AI Result";
@@ -157,9 +163,32 @@ export default function ResultsView({
 
   const handleGenericAiStreamTask = async (
     taskType: AIInteractionTaskType,
-    questionForTask?: string
+    questionForTask?: string,
+    forceRegenerate = false
   ) => {
     if (!transcriptionData.text) return;
+
+    // For non-Q&A tasks, check if a result of the same type already exists.
+    if (taskType !== "custom_question" && !forceRegenerate) {
+      // MODIFIED CONDITION
+      const existingResult = aiResults.find(
+        (r) => r.taskType === taskType && !r.error
+      );
+      if (existingResult) {
+        console.log(
+          `[ResultsView] Found existing result for task: "${taskType}". Expanding and highlighting it.`
+        );
+        setExpandedResultId(existingResult.id);
+        setNewlyAddedResultId(existingResult.id);
+        return; // Exit
+      }
+    }
+
+    // When regenerating, we first remove the old result of the same type
+    if (forceRegenerate) {
+      setAiResults((prev) => prev.filter((r) => r.taskType !== taskType));
+    }
+
     if (
       taskType === "custom_question" &&
       (!questionForTask || questionForTask.trim() === "")
@@ -304,6 +333,27 @@ export default function ResultsView({
     });
   };
 
+  // --- Skeleton Component for Loading State ---
+  const AiResultSkeleton: React.FC = () => {
+    return (
+      <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-700/50 shadow-inner">
+        <div className="animate-pulse flex space-x-4">
+          <div className="flex-1 space-y-3 py-1">
+            <div className="h-2 bg-slate-300 dark:bg-slate-600 rounded"></div>
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="h-2 bg-slate-300 dark:bg-slate-600 rounded col-span-2"></div>
+                <div className="h-2 bg-slate-300 dark:bg-slate-600 rounded col-span-1"></div>
+              </div>
+              <div className="h-2 bg-slate-300 dark:bg-slate-600 rounded"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  // --- End Skeleton Component ---
+
   return (
     <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700 dark:text-slate-200">
       <div className="text-center mb-6">
@@ -385,7 +435,7 @@ export default function ResultsView({
               variant="ghost"
               size="sm"
               className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-700/20"
-              title="Clear all AI generated results"
+              aria-label="Clear all AI generated results"
             >
               <Trash2 size={14} className="mr-1.5" />
               Clear All
@@ -456,6 +506,25 @@ export default function ResultsView({
                 ? "Extracting..."
                 : "Action Items"}
             </StyledButton>
+            <StyledButton
+              onClick={() => handleGenericAiStreamTask("identify_topics")}
+              variant="secondary"
+              isLoading={isStreamingAi && activeAiTask === "identify_topics"}
+              disabled={isStreamingAi || !transcriptionData.text}
+              className="group w-full sm:w-auto"
+            >
+              {isStreamingAi && activeAiTask === "identify_topics" ? (
+                <Loader2 size={18} className="mr-2 animate-spin" />
+              ) : (
+                <Hash
+                  size={18}
+                  className="mr-2 group-hover:text-violet-500 transition-colors"
+                />
+              )}
+              {isStreamingAi && activeAiTask === "identify_topics"
+                ? "Identifying..."
+                : "Identify Topics"}
+            </StyledButton>
           </div>
         </div>
 
@@ -501,24 +570,27 @@ export default function ResultsView({
 
         {/* Display Area for AI Results and current streaming text */}
         <div className="mt-6 space-y-3">
-          {isStreamingAi && activeAiTask && (
-            <div className="p-4 border border-sky-300 rounded-lg bg-sky-50 text-sm text-slate-700 dark:text-slate-200 shadow-inner">
-              <h4 className="font-semibold mb-2 text-sky-600 flex items-center">
-                <Loader2 size={16} className="animate-spin mr-2" />
-                Generating {getTaskDisplayName(activeAiTask)}...
-              </h4>
-              {streamingAiText ? (
+          {/* Display SKELETON or STREAMING TEXT if a task is active */}
+          {isStreamingAi &&
+            activeAiTask &&
+            (!streamingAiText ? (
+              // If streaming has started but no text has arrived yet, show skeleton
+              <AiResultSkeleton />
+            ) : (
+              // Once text starts arriving, show it
+              <div className="p-4 border border-sky-300 dark:border-sky-700 rounded-lg bg-sky-50 dark:bg-sky-900/20 text-sm text-slate-700 dark:text-slate-200 shadow-inner">
+                <h4 className="font-semibold mb-2 text-sky-600 dark:text-sky-400 flex items-center">
+                  <Loader2 size={16} className="animate-spin mr-2" />
+                  Generating {getTaskDisplayName(activeAiTask)}...
+                </h4>
                 <div className="whitespace-pre-wrap break-words mt-1">
                   {streamingAiText}
                   <span className="inline-block animate-ping w-1.5 h-1.5 bg-sky-500 rounded-full ml-1"></span>
                 </div>
-              ) : (
-                <p className="text-slate-400 italic">
-                  Waiting for AI response to start streaming...
-                </p>
-              )}
-            </div>
-          )}
+              </div>
+            ))}
+
+          {/* Display global AI error if any */}
           {globalAiError && !isStreamingAi && (
             <div className="p-3 border border-red-300 rounded-lg bg-red-50 text-sm text-red-700">
               <p className="break-words">
@@ -569,7 +641,7 @@ export default function ResultsView({
                   className="p-4 border-t border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
                 >
                   {result.wasTruncated && (
-                    <div className="mb-3 p-2.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-300 dark:text-amber-700 border border-amber-300 dark:border-amber-600 rounded-md flex items-center space-x-2">
+                    <div className="mb-3 p-2.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-700 border border-amber-300 dark:border-amber-600 rounded-md flex items-center space-x-2">
                       <AlertCircle
                         size={16}
                         className="flex-shrink-0 text-amber-500 dark:text-amber-400"
@@ -602,8 +674,11 @@ export default function ResultsView({
                                 onClick={() =>
                                   handleCopyListItem(item, result.id, index)
                                 }
-                                className="ml-2 p-1 rounded-md text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity"
-                                title="Copy item"
+                                className="ml-2 p-1 rounded-md text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity"
+                                aria-label={`Copy item: ${item.substring(
+                                  0,
+                                  40
+                                )}...`}
                               >
                                 {isCopied ? (
                                   <CopyCheckIcon
@@ -630,7 +705,27 @@ export default function ResultsView({
                     </p>
                   )}
 
-                  <div className="mt-4 flex justify-end space-x-2">
+                  <div className="mt-4 flex justify-end items-center space-x-2">
+                    {/* NEW REGENERATE BUTTON */}
+                    {result.taskType !== "custom_question" && (
+                      <StyledButton
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          handleGenericAiStreamTask(
+                            result.taskType,
+                            undefined,
+                            true
+                          )
+                        }
+                        className="text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-700/30"
+                        aria-label="Regenerate this result"
+                        disabled={isStreamingAi}
+                      >
+                        <RefreshCw size={14} className="mr-1.5" />
+                        Regenerate
+                      </StyledButton>
+                    )}
                     <StyledButton
                       size="sm"
                       variant="ghost"
@@ -649,6 +744,9 @@ export default function ResultsView({
                       variant="ghost"
                       onClick={() => handleRemoveResult(result.id)}
                       className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-700/20"
+                      aria-label={`Clear ${getTaskDisplayName(
+                        result.taskType
+                      )} result`}
                     >
                       <XCircle size={14} className="mr-1.5" /> Clear
                     </StyledButton>
