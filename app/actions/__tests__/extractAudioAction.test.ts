@@ -33,17 +33,25 @@ describe('extractAudioAction', () => {
   });
 
   it('handles ffmpeg failure', async () => {
-    execMock.mockImplementation((cmd: string, opts: any, cb: Function) => cb(new Error('boom')));
+    execMock.mockImplementation(
+      (
+        cmd: string,
+        opts: Record<string, unknown>,
+        cb: (err: Error | null, out: string, errOut: string) => void,
+      ) => cb(new Error('boom'), '', '')
+    );
     const file = new File(['data'], 'vid.mp4', { type: 'video/mp4' });
     const fd = new FormData();
     fd.append('videoFile', file);
     const res = await extractAudioAction(fd);
     expect(res.success).toBe(false);
-    expect((res as any).error).toMatch(/FFmpeg failed/);
+    if (!res.success) {
+      expect(res.error).toMatch(/FFmpeg failed/);
+    }
   });
 
   it('returns success when ffmpeg succeeds', async () => {
-    execMock.mockImplementation((cmd: string, opts: any, cb: Function) => cb(null, '', ''));
+    execMock.mockImplementation((cmd: string, opts: Record<string, unknown>, cb: (err: null, out: string, errOut: string) => void) => cb(null, '', ''));
     const file = new File(['data'], 'vid.mp4', { type: 'video/mp4' });
     const fd = new FormData();
     fd.append('videoFile', file);

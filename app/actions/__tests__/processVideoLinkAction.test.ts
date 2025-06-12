@@ -29,7 +29,13 @@ describe('processVideoLinkAction', () => {
   });
 
   it('propagates transcription failure', async () => {
-    execMock.mockImplementation((cmd: string, opts: any, cb: Function) => cb(null, '', ''));
+    execMock.mockImplementation(
+      (
+        cmd: string,
+        opts: Record<string, unknown>,
+        cb: (err: Error | null, out: string, errOut: string) => void,
+      ) => cb(null, '', '')
+    );
     const res = await processVideoLinkAction('https://example.com/video.mp4', 'chill');
     expect(res.success).toBe(false);
     expect(res.error).toMatch(/Groq fail/);
