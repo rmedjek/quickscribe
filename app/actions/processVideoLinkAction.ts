@@ -27,6 +27,22 @@ export async function processVideoLinkAction(
   mode: TranscriptionMode // Add mode parameter
 ): Promise<{ success: boolean; data?: DetailedTranscriptionResult; error?: string }> {
   console.log(`[VideoLinkAction] Processing URL: ${videoUrl} with mode: ${mode}`);
+
+  // --- NEW SERVER-SIDE VALIDATION ---
+  try {
+    const url = new URL(videoUrl);
+    if (url.hostname.includes("youtube.com") && url.pathname === "/results") {
+      const errorMsg = "YouTube search result pages are not supported. Please provide a link to a single video.";
+      console.warn(`[VideoLinkAction] Aborting due to search results URL: ${videoUrl}`);
+      return { success: false, error: errorMsg };
+    }
+  } catch {
+    // If the URL is malformed, yt-dlp will fail anyway, but we can log it here.
+    console.warn(`[VideoLinkAction] Received a malformed URL: ${videoUrl}`);
+    return { success: false, error: "The provided link is not a valid URL." };
+  }
+  // --- END VALIDATION ---
+
   let tempDownloadedFilePath: string | null = null;
   let tempOpusAudioPath: string | null = null;
   const uniqueId = Date.now();
@@ -83,7 +99,7 @@ export async function processVideoLinkAction(
       // -o: Output template. We specify the full path.
       const ytDlpOutputExtension = 'm4a'; // Ask yt-dlp to give us M4A
       tempDownloadedFilePath = path.join(os.tmpdir(), `${downloadedFileNameBase}.${ytDlpOutputExtension}`);
-      const ytDlpCommand = `yt-dlp --quiet --progress --force-overwrites -x --audio-format ${ytDlpOutputExtension} -o "${tempDownloadedFilePath}" --no-playlist -- "${videoUrl}"`;
+      const ytDlpCommand = `yt-dlp --quiet --progress --force-overwrites -x --audio-format ${ytDlpOutputExtension} -o "${tempDownloadedFilePath}" --no-playlist "${videoUrl}"`;
       
       console.log(`[VideoLinkAction] Executing yt-dlp: ${ytDlpCommand}`);
       try {

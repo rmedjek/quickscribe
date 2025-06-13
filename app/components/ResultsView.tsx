@@ -13,15 +13,8 @@ import {
   HelpCircle,
   Send,
   ClipboardCheck,
-  AlertCircle,
-  ChevronDown,
-  ChevronUp,
-  XCircle,
   Trash2,
-  Copy as CopyIcon,
-  CopyCheck as CopyCheckIcon,
   Hash,
-  RefreshCw,
 } from "lucide-react";
 import StyledButton from "./StyledButton";
 import DownloadButton from "./DownloadButton";
@@ -34,36 +27,10 @@ import {
   AIInteractionParams,
 } from "@/actions/interactWithTranscriptAction";
 import {APP_STEPS, TRANSCRIPTION_MODEL_DISPLAY_NAMES} from "@/types/app";
-import type {AppStep} from "@/types/app";
+import type {AiResultItem, AppStep} from "@/types/app";
+import {AiResultCard} from "./AiResultCard";
 
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
-
-interface AiResultItem {
-  id: string;
-  taskType: AIInteractionTaskType;
-  text: string;
-  wasTruncated: boolean;
-  error?: string;
-}
-
-const LIST_TASK_TYPES = new Set<AIInteractionTaskType>([
-  "extract_key_points",
-  "extract_action_items",
-  "identify_topics",
-]);
-
-const parseListItems = (text: string): string[] => {
-  if (!text) return [];
-  const potentialItems = text
-    .split("\n")
-    .filter((line) => /^\s*(\*|-|\d+\.)\s+/.test(line));
-  if (potentialItems.length > 0) {
-    return potentialItems.map((line) =>
-      line.replace(/^\s*(\*|-|\d+\.)\s+/, "").trim()
-    );
-  }
-  return text.split("\n").filter((line) => line.trim() !== "");
-};
 
 interface Props {
   transcriptionData: DetailedTranscriptionResult;
@@ -144,22 +111,64 @@ export default function ResultsView({
 
   const zipAll = async () => {
     setZipping(true);
+    console.log("[Zip] Starting to create archive...");
     try {
       const zip = new JSZip();
+
+      // Add the main transcript files
+      console.log("[Zip] Adding transcript files (TXT, VTT, SRT)...");
       zip.file("transcript.txt", transcriptionData.text);
-      if (transcriptionData.srtContent)
+      if (transcriptionData.srtContent) {
         zip.file("transcript.srt", transcriptionData.srtContent);
-      if (transcriptionData.vttContent)
+      }
+      if (transcriptionData.vttContent) {
         zip.file("transcript.vtt", transcriptionData.vttContent);
+      }
+
+      // Add all the generated AI results
+      if (aiResults.length > 0) {
+        console.log(`[Zip] Adding ${aiResults.length} AI result(s)...`);
+        const aiFolder = zip.folder("ai-insights"); // Put AI results in a subfolder
+
+        if (!aiFolder) {
+          // This should not happen, but as a fallback, add to root
+          console.error("[Zip] Could not create 'ai-insights' folder in zip.");
+          return;
+        }
+
+        aiResults.forEach((result) => {
+          if (result.text && !result.error) {
+            // Sanitize the task type for use as a filename
+            const fileName = `${result.taskType.replace(/_/g, "-")}.txt`;
+            // Add a header within the text file for context
+            const fileContent = `--- QuickScribe AI Insight ---\n\nTool: ${getTaskDisplayName(
+              result.taskType
+            )}\nGenerated: ${new Date().toLocaleString()}\n\n---\n\n${
+              result.text
+            }`;
+
+            console.log(`[Zip] Adding: ${fileName}`);
+            aiFolder.file(fileName, fileContent);
+          }
+        });
+      }
+
+      // Generate and download the zip file
+      console.log("[Zip] Generating blob...");
       const blob = await zip.generateAsync({type: "blob"});
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "transcripts.zip";
+      a.download = "quickscribe-results.zip"; // More descriptive zip name
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      console.log("[Zip] Download triggered.");
+    } catch (err) {
+      console.error("Error creating zip file:", err);
+      // You might want to show an error to the user here
+      // For example: setGlobalAiError("Failed to create zip file.");
     } finally {
       setZipping(false);
     }
@@ -188,38 +197,46 @@ export default function ResultsView({
     questionForTask?: string,
     forceRegenerate = false
   ) => {
+    if (!transcriptionData.text) return;
+
+    // Check for existing result to highlight/expand (if not forcing regenerate)
     if (taskType !== "custom_question" && !forceRegenerate) {
       const existingResult = aiResults.find(
         (r) => r.taskType === taskType && !r.error
       );
       if (existingResult) {
-        console.log(
-          `[ResultsView] Found existing result for task: "${taskType}". Expanding and highlighting it.`
-        );
         setExpandedResultId(existingResult.id);
         setNewlyAddedResultId(existingResult.id);
         return;
       }
     }
-    if (forceRegenerate) {
-      setAiResults((prev) => prev.filter((r) => r.taskType !== taskType));
-    }
-    if (
-      taskType === "custom_question" &&
-      (!questionForTask || questionForTask.trim() === "")
-    ) {
-      setGlobalAiError("Please enter a question.");
-      return;
-    }
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+
+    if (isStreamingAi) {
+      abortControllerRef.current?.abort();
     }
     abortControllerRef.current = new AbortController();
 
-    setIsStreamingAi(true);
-    setActiveAiTask(taskType);
+    // If regenerating, remove old result first.
+    const prevResults = forceRegenerate
+      ? aiResults.filter((r) => r.taskType !== taskType)
+      : aiResults;
+
+    const newResultId = `${taskType}-${Date.now()}`;
+    const placeholderResult: AiResultItem = {
+      id: newResultId,
+      taskType,
+      text: "",
+      wasTruncated: false,
+      isStreaming: true,
+    };
+
+    setAiResults([placeholderResult, ...prevResults]);
     setGlobalAiError(null);
-    let taskWasTruncated = false;
+    setActiveAiTask(taskType);
+    setIsStreamingAi(true);
+    setExpandedResultId(newResultId); // Auto-expand the new skeleton/streaming card
+    if (taskType === "custom_question") setCustomQuestion("");
+
     const body: AIInteractionParams = {
       transcriptText: transcriptionData.text,
       taskType: taskType,
@@ -227,6 +244,7 @@ export default function ResultsView({
         taskType === "custom_question" ? questionForTask : undefined,
       outputLanguage: aiOutputLanguage,
     };
+    let taskWasTruncated = false;
 
     try {
       const response = await fetch(AI_INTERACTION_API_ENDPOINT, {
@@ -254,45 +272,43 @@ export default function ResultsView({
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let accumulatedText = "";
+
       while (true) {
-        try {
-          const {done, value} = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, {stream: true});
-          accumulatedText += chunk;
-        } catch (streamError: any) {
-          if (streamError.name !== "AbortError") {
-            setGlobalAiError(
-              "Error reading stream: " + (streamError.message || "Unknown")
-            );
-          }
-          throw streamError;
-        }
+        const {done, value} = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, {stream: true});
+        // Update the specific item in the results array as text streams in
+        setAiResults((currentResults) =>
+          currentResults.map((r) =>
+            r.id === newResultId ? {...r, text: r.text + chunk} : r
+          )
+        );
       }
 
-      if (!abortControllerRef.current?.signal.aborted) {
-        const newResultId = `${taskType}-${Date.now()}`;
-        setAiResults((prev) => [
-          {
-            id: newResultId,
-            taskType,
-            text: accumulatedText,
-            wasTruncated: taskWasTruncated,
-          },
-          ...prev,
-        ]);
-        setExpandedResultId(newResultId);
-        setNewlyAddedResultId(newResultId);
-        if (taskType === "custom_question") setCustomQuestion("");
-      }
+      // Finalize the result item when stream is done
+      setAiResults((currentResults) =>
+        currentResults.map((r) =>
+          r.id === newResultId
+            ? {...r, isStreaming: false, wasTruncated: taskWasTruncated}
+            : r
+        )
+      );
     } catch (error: any) {
       if (error.name !== "AbortError") {
-        setGlobalAiError(
-          error.message || `Failed to process ${taskType} task.`
+        console.error(`Error for task ${taskType}:`, error);
+        // Update the result item with an error message
+        setAiResults((currentResults) =>
+          currentResults.map((r) =>
+            r.id === newResultId
+              ? {...r, isStreaming: false, error: error.message}
+              : r
+          )
         );
       } else {
-        console.log(`AI task ${activeAiTask} aborted.`);
+        // Remove the placeholder if aborted
+        setAiResults((currentResults) =>
+          currentResults.filter((r) => r.id !== newResultId)
+        );
       }
     } finally {
       setIsStreamingAi(false);
@@ -560,159 +576,23 @@ export default function ResultsView({
             </div>
           )}
 
+          {/* List of ALL Results (including streaming ones) */}
           {aiResults.map((result) => (
-            <div
+            <AiResultCard
               key={result.id}
-              className={`border dark:border-slate-700 rounded-lg shadow-sm overflow-hidden ${
-                result.id === newlyAddedResultId ? "ai-result-newly-added" : ""
-              }`}
-            >
-              <button
-                onClick={() => toggleResultExpansion(result.id)}
-                className={`w-full flex justify-between items-center p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:focus-visible:ring-sky-400 focus-visible:ring-inset transition-colors rounded-t-lg ${
-                  result.id === newlyAddedResultId &&
-                  expandedResultId !== result.id
-                    ? "bg-sky-50 dark:bg-sky-900/30"
-                    : expandedResultId === result.id
-                    ? "bg-slate-200 dark:bg-slate-600"
-                    : "bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600"
-                }`}
-                aria-expanded={expandedResultId === result.id}
-                aria-controls={`result-content-${result.id}`}
-              >
-                <span className="font-semibold text-slate-800 dark:text-slate-100">
-                  {getTaskDisplayName(result.taskType)}
-                </span>
-                {expandedResultId === result.id ? (
-                  <ChevronUp
-                    size={20}
-                    className="text-slate-600 dark:text-slate-400"
-                  />
-                ) : (
-                  <ChevronDown
-                    size={20}
-                    className="text-slate-600 dark:text-slate-400"
-                  />
-                )}
-              </button>
-              {expandedResultId === result.id && (
-                <div
-                  id={`result-content-${result.id}`}
-                  className="p-4 border-t border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
-                >
-                  {result.wasTruncated && (
-                    <div className="mb-3 p-2.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-700 border border-amber-300 dark:border-amber-600 rounded-md flex items-center space-x-2">
-                      <AlertCircle
-                        size={16}
-                        className="flex-shrink-0 text-amber-500 dark:text-amber-400"
-                      />
-                      <span>
-                        Note: The AI processed a shortened version of the
-                        transcript due to its length. Results may not cover the
-                        entire content.
-                      </span>
-                    </div>
-                  )}
-                  {!result.error &&
-                    result.text &&
-                    (LIST_TASK_TYPES.has(result.taskType) ? (
-                      <ul className="space-y-2.5">
-                        {parseListItems(result.text).map((item, index) => {
-                          const uniqueItemId = `${result.id}-${index}`;
-                          const isCopied = copiedListItemId === uniqueItemId;
-                          return (
-                            <li
-                              key={uniqueItemId}
-                              className="group flex items-start text-sm text-slate-700 dark:text-slate-200"
-                            >
-                              <span className="mr-2.5 mt-0.5 text-sky-500 dark:text-sky-400">
-                                •
-                              </span>
-                              <span className="flex-grow">{item}</span>
-                              <button
-                                onClick={() =>
-                                  handleCopyListItem(item, result.id, index)
-                                }
-                                className="ml-2 p-1 rounded-md text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity"
-                                aria-label={`Copy item: ${item.substring(
-                                  0,
-                                  40
-                                )}...`}
-                              >
-                                {isCopied ? (
-                                  <CopyCheckIcon
-                                    size={16}
-                                    className="text-green-500"
-                                  />
-                                ) : (
-                                  <CopyIcon size={16} />
-                                )}
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : (
-                      <div className="whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-200">
-                        {result.text}
-                      </div>
-                    ))}
-                  {result.error && (
-                    <p className="text-red-600 dark:text-red-400 break-words">
-                      <strong>Error generating this result:</strong>{" "}
-                      {result.error}
-                    </p>
-                  )}
-                  <div className="mt-4 flex justify-end items-center space-x-2">
-                    {result.taskType !== "custom_question" && (
-                      <StyledButton
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          handleGenericAiStreamTask(
-                            result.taskType,
-                            undefined,
-                            true
-                          )
-                        }
-                        className="text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-700/30"
-                        aria-label="Regenerate this result"
-                        disabled={isStreamingAi}
-                      >
-                        <RefreshCw size={14} className="mr-1.5" />
-                        Regenerate
-                      </StyledButton>
-                    )}
-                    <StyledButton
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        result.text &&
-                        !result.error &&
-                        navigator.clipboard.writeText(result.text)
-                      }
-                      className="text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-700/30 disabled:text-slate-400 dark:disabled:text-slate-500"
-                      disabled={!result.text || !!result.error}
-                    >
-                      <ClipboardCopy size={14} className="mr-1.5" />
-                      Copy All
-                    </StyledButton>
-                    <StyledButton
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleRemoveResult(result.id)}
-                      className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-700/20"
-                      aria-label={`Clear ${getTaskDisplayName(
-                        result.taskType
-                      )} result`}
-                    >
-                      <XCircle size={14} className="mr-1.5" />
-                      Clear
-                    </StyledButton>
-                  </div>
-                </div>
-              )}
-            </div>
+              result={result}
+              isExpanded={expandedResultId === result.id}
+              onToggle={toggleResultExpansion}
+              onRemove={handleRemoveResult}
+              onRegenerate={(taskType) =>
+                handleGenericAiStreamTask(taskType, undefined, true)
+              }
+              onCopyListItem={handleCopyListItem}
+              copiedListItemId={copiedListItemId}
+              isAnyTaskStreaming={isStreamingAi}
+              getTaskDisplayName={getTaskDisplayName}
+              newlyAddedResultId={newlyAddedResultId}
+            />
           ))}
         </div>
       </div>

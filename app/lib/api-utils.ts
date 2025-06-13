@@ -3,8 +3,8 @@
 import Groq from 'groq-sdk';
 
 const DEFAULT_MAX_RETRIES = 2;
-const DEFAULT_INITIAL_BACKOFF_MS = 1500; // Increased slightly to give servers more breathing room
-const DEFAULT_MAX_BACKOFF_MS = 45000;   // 45 seconds
+const DEFAULT_INITIAL_BACKOFF_MS = 5000; // Increased slightly to give servers more breathing room
+const DEFAULT_MAX_BACKOFF_MS = 60000;   // 45 seconds
 
 export async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));

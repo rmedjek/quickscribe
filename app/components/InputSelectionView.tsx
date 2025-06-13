@@ -10,6 +10,9 @@ interface InputSelectionViewProps {
   onLinkSubmitted: (link: string) => void;
 }
 
+const YOUTUBE_URL_REGEX =
+  /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
+
 // Define accepted MIME types
 const ACCEPTED_VIDEO_TYPES = [
   "video/mp4",
@@ -121,12 +124,44 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
 
   const handleLinkSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setLinkError("");
+
     if (!linkUrl.trim()) {
       setLinkError("Please enter a video link."); // Keep as video link for this section
       return;
     }
+
     try {
-      new URL(linkUrl);
+      const url = new URL(linkUrl);
+      // Check if it's a YouTube search results page
+      if (url.hostname.includes("youtube.com") && url.pathname === "/results") {
+        setLinkError(
+          "Please provide a link to a single video, not a search results page."
+        );
+        return;
+      }
+      // A simple check if it looks like a valid YouTube URL but has no video ID
+      if (
+        url.hostname.includes("youtube.com") &&
+        url.pathname === "/watch" &&
+        !url.searchParams.has("v")
+      ) {
+        setLinkError(
+          "This looks like a YouTube link, but it's missing the video ID (e.g., ?v=...)."
+        );
+        return;
+      }
+
+      // Use regex for a more general check (optional but good)
+      if (
+        url.hostname.includes("youtube") &&
+        !YOUTUBE_URL_REGEX.test(linkUrl)
+      ) {
+        setLinkError("Please provide a valid YouTube video link.");
+        return;
+      }
+
+      // If all checks pass, submit the link
       onLinkSubmitted(linkUrl);
       setLinkUrl("");
     } catch {
