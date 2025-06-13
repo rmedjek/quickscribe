@@ -80,7 +80,20 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    validateAndSelectFile(event.target.files?.[0]);
+    const file = event.target.files?.[0];
+    if (file) {
+      validateAndSelectFile(file);
+    }
+    if (event.target) {
+      event.target.value = "";
+    }
+  };
+
+  const handleButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    // --- FIX IS HERE ---
+    event.stopPropagation(); // Stop the click from bubbling up to the parent div
+    // --- END FIX ---
+    handleCardClickToUpload(); // Then perform the action
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
@@ -168,7 +181,7 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
           />
           <StyledButton
             variant="primary"
-            onClick={handleCardClickToUpload}
+            onClick={handleButtonClick}
             className="bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-500"
           >
             Select File {/* Changed from "Select Video" */}

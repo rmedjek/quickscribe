@@ -5,12 +5,16 @@ import Groq from 'groq-sdk';
 import { generateSRT, generateVTT, Segment } from '../lib/caption-utils';
 import { TranscriptionMode } from '@/components/ConfirmationView';
 import { retryWithBackoff } from '@/lib/api-utils'; // Import the helper
+import { TRANSCRIPTION_MODELS } from '@/types/app';
 
 if (!process.env.GROQ_API_KEY) {
   throw new Error("GROQ_API_KEY environment variable is not set.");
 }
 
 const GROQ_REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes for each attempt
+
+// const TRANSCRIPTION_MODEL_TURBO = process.env.GROQ_TRANSCRIPTION_MODEL_TURBO || 'whisper-large-v3-turbo';
+// const TRANSCRIPTION_MODEL_CORE = process.env.GROQ_TRANSCRIPTION_MODEL_CORE || 'whisper-large-v3';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -33,8 +37,8 @@ export async function transcribeAudioAction(
   mode: TranscriptionMode
 ): Promise<{ success: boolean; data?: DetailedTranscriptionResult; error?: string }> {
   console.log("[Server Action] transcribeAudioAction called");
-  
-  const modelToUse = mode === 'turbo' ? 'whisper-large-v3' : 'distil-whisper-large-v3-en';
+
+  const modelToUse = TRANSCRIPTION_MODELS[mode];
   const audioBlob = formData.get("audioBlob") as File | null;
 
   if (!audioBlob) {
@@ -43,11 +47,12 @@ export async function transcribeAudioAction(
 
   const audioBlobSizeMB = (audioBlob.size / (1024 * 1024)).toFixed(2);
   console.log(`[Server Action] Received audio blob: ${audioBlob.name}, Size: ${audioBlobSizeMB} MB, Type: ${audioBlob.type}`);
+  console.log(`[Server Action] Preparing to transcribe with actual model: "${modelToUse}"`);
 
   try {
     const operation = async () => {
       // This console log will now appear for each attempt within retryWithBackoff
-      // console.log(`[Server Action] Attempting Groq transcription. Size: ${audioBlobSizeMB} MB...`);
+      console.log(`[Server Action] Attempting Groq transcription. Size: ${audioBlobSizeMB} MB...`);
       return await groq.audio.transcriptions.create({
         file: audioBlob,
         model: modelToUse,
@@ -56,7 +61,8 @@ export async function transcribeAudioAction(
       });
     };
 
-    // Use the retryWithBackoff helper
+    console.log(`[Server Action] transcribed with actual model: "${modelToUse}"`);
+
     const transcription = await retryWithBackoff({
         operationName: `GroqAudioTranscription-${audioBlob.name.substring(0,20)}`, // Add some identifier
         operation,
@@ -106,7 +112,7 @@ export async function transcribeAudioAction(
       return { success: false, error: "Transcription failed: Unexpected response structure from Groq." };
     }
 
-  } catch (error: unknown) { // This catch block now handles errors after all retries have failed
+  } catch (error: unknown) {
     console.error(`[Server Action] Error during Groq API call for transcription (file: ${audioBlob.name}, size: ${audioBlobSizeMB}MB) after all retries:`, error);
 
     let userFriendlyError = "An unexpected error occurred during transcription.";
@@ -121,7 +127,6 @@ export async function transcribeAudioAction(
       if ("code" in error) {
         errorCode = (error as { code: unknown }).code;
       }
-      // Removed unused errorStatus assignment
     } else {
       userFriendlyError = `An unexpected error occurred during transcription: ${String(error)}`;
     }
@@ -152,7 +157,7 @@ export async function transcribeAudioAction(
     } else if (errorCode === 'ECONNRESET') {
         userFriendlyError = `A direct connection error (ECONNRESET) occurred. This often happens with very large audio files. Please try a smaller file. File size: ${audioBlobSizeMB} MB.`;
     }
-
+    
     return { success: false, error: userFriendlyError };
   }
 }

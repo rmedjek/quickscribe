@@ -23,14 +23,14 @@ await import('../transcribeAudioAction');
 
 describe('processVideoLinkAction', () => {
   it('rejects playlist URLs', async () => {
-    const res = await processVideoLinkAction('https://youtube.com/watch?v=a&list=b', 'chill');
+    const res = await processVideoLinkAction('https://youtube.com/watch?v=a&list=b', 'core');
     expect(res.success).toBe(false);
     expect(res.error).toMatch(/playlist/);
   });
 
   it('propagates transcription failure', async () => {
     execMock.mockImplementation((cmd: string, opts: any, cb: Function) => cb(null, '', ''));
-    const res = await processVideoLinkAction('https://example.com/video.mp4', 'chill');
+    const res = await processVideoLinkAction('https://example.com/video.mp4', 'core');
     expect(res.success).toBe(false);
     expect(res.error).toMatch(/Groq fail/);
   });

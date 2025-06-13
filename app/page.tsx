@@ -2,7 +2,7 @@
 "use client";
 
 import React, {useState, useCallback, useEffect} from "react";
-import { APP_STEPS } from "@/types/app";
+import {APP_STEPS} from "@/types/app";
 
 import PageLayout from "@/components/PageLayout";
 import InputSelectionView from "@/components/InputSelectionView";
@@ -21,7 +21,7 @@ import {useServerLinkProcessor} from "./hooks/useServerLinkProcessor";
 import {useClientFileProcessor} from "./hooks/useClientFileProcessor";
 import {useServerFileUploadProcessor} from "./hooks/useServerFileUploadProcessor";
 
-import type { SelectedInputType } from "@/types/app";
+import type {SelectedInputType} from "@/types/app";
 import {StepperProvider, useStepper} from "./contexts/StepperContext";
 
 enum ViewState {
@@ -179,7 +179,7 @@ function HomePageInner() {
     useState<SelectedInputType | null>(null);
 
   const [ffmpeg, setFfmpeg] = useState<FFmpeg | null>(null);
-  const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("chill");
+  const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
   const [currentOverallStatus, setCurrentOverallStatus] = useState("");
   const [processingUIStages, setProcessingUIStages] = useState<
     StageDisplayData[]
@@ -187,10 +187,14 @@ function HomePageInner() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transcriptionData, setTranscriptionData] =
     useState<DetailedTranscriptionResult | null>(null);
+  const [transcriptLanguage, setTranscriptLanguage] = useState<string>("en");
 
   const handleProcessingComplete = useCallback(
     (data: DetailedTranscriptionResult) => {
       setTranscriptionData(data);
+      if (data.language) {
+        setTranscriptLanguage(data.language.split("-")[0]);
+      }
       setCurrentOverallStatus("Transcription complete!");
       setCurrentView(ViewState.ShowingResults);
       setStep("transcribe"); // Ensure step is updated
@@ -225,11 +229,6 @@ function HomePageInner() {
     },
     []
   );
-  /* ==================================================================== */
-  // (all helper callbacks are identical to your last version, but every place
-  //  that previously called `setCurrentAppStepId("process")` etc. now calls
-  //  `setStep("process")` instead.)
-  /* ===================================================================== */
 
   /* processing hooks ----------------------------------------------------- */
   const {processFile: processClientFile} = useClientFileProcessor({
@@ -309,17 +308,16 @@ function HomePageInner() {
   const resetToStart = useCallback(() => {
     setSelectedFile(null);
     setSubmittedLink(null);
-    setSelectedInputType(null); // MODIFIED: Reset
+    setSelectedInputType(null);
     setCurrentOverallStatus("");
     setProcessingUIStages([]);
     setErrorMessage(null);
     setTranscriptionData(null);
     setCurrentView(ViewState.SelectingInput);
-    setStep("configure"); // MODIFIED: Reset step
+    setStep("configure");
   }, [setStep]);
 
   const handleFileSelected = (file: File) => {
-    // MODIFIED
     setSelectedFile(file);
     setSubmittedLink(null);
     if (file.type.startsWith("audio/")) {
@@ -335,7 +333,7 @@ function HomePageInner() {
       );
       return; // Important to return here so we don't proceed to ConfirmationView
     }
-    setStep("configure"); // Ensure we are back at configure step
+    setStep("configure");
     setCurrentView(ViewState.ConfirmingInput);
   };
 
@@ -361,7 +359,7 @@ function HomePageInner() {
       if (processingPath === "client") {
         // <<< Path for "Process in Browser"
         setCurrentView(ViewState.ProcessingClient);
-        processClientFile(selectedFile, mode, isAudio); // Should call THIS
+        processClientFile(selectedFile, mode, isAudio);
       } else {
         // processingPath === "server"
         setCurrentView(ViewState.ProcessingServer);
@@ -393,7 +391,7 @@ function HomePageInner() {
           <ConfirmationView
             file={selectedFile}
             link={submittedLink}
-            inputType={selectedInputType} // MODIFIED: Pass inputType
+            inputType={selectedInputType}
             onConfirm={handleConfirmation}
             onCancel={resetToStart}
           />
@@ -413,6 +411,7 @@ function HomePageInner() {
           transcriptionData && (
             <ResultsView
               transcriptionData={transcriptionData}
+              transcriptLanguage={transcriptLanguage}
               mode={selectedMode}
               onRestart={resetToStart}
             />

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/components/ResultsView.tsx
 "use client";
 
@@ -8,8 +9,6 @@ import {
   Download,
   Brain,
   Loader2,
-  Hash,
-  RefreshCw,
   ListChecks,
   HelpCircle,
   Send,
@@ -21,6 +20,8 @@ import {
   Trash2,
   Copy as CopyIcon,
   CopyCheck as CopyCheckIcon,
+  Hash,
+  RefreshCw,
 } from "lucide-react";
 import StyledButton from "./StyledButton";
 import DownloadButton from "./DownloadButton";
@@ -32,10 +33,9 @@ import {
   AIInteractionTaskType,
   AIInteractionParams,
 } from "@/actions/interactWithTranscriptAction";
-import {APP_STEPS} from "@/types/app";
+import {APP_STEPS, TRANSCRIPTION_MODEL_DISPLAY_NAMES} from "@/types/app";
 import type {AppStep} from "@/types/app";
 
-const modeLabel = (m: TranscriptionMode) => (m === "turbo" ? "Turbo" : "Chill");
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
 
 interface AiResultItem {
@@ -46,14 +46,12 @@ interface AiResultItem {
   error?: string;
 }
 
-// Helper to identify tasks that should be rendered as lists
 const LIST_TASK_TYPES = new Set<AIInteractionTaskType>([
   "extract_key_points",
   "extract_action_items",
   "identify_topics",
 ]);
 
-// Helper to parse LLM's list output into an array of strings
 const parseListItems = (text: string): string[] => {
   if (!text) return [];
   const potentialItems = text
@@ -69,21 +67,23 @@ const parseListItems = (text: string): string[] => {
 
 interface Props {
   transcriptionData: DetailedTranscriptionResult;
+  transcriptLanguage: string;
   mode: TranscriptionMode;
   onRestart: () => void;
 }
 
 export default function ResultsView({
   transcriptionData,
+  transcriptLanguage,
   mode,
   onRestart,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [zipping, setZipping] = useState(false);
 
+  // AI State
   const [activeAiTask, setActiveAiTask] =
     useState<AIInteractionTaskType | null>(null);
-  const [streamingAiText, setStreamingAiText] = useState<string>("");
   const [isStreamingAi, setIsStreamingAi] = useState(false);
   const [aiResults, setAiResults] = useState<AiResultItem[]>([]);
   const [globalAiError, setGlobalAiError] = useState<string | null>(null);
@@ -94,6 +94,28 @@ export default function ResultsView({
     null
   );
   const [copiedListItemId, setCopiedListItemId] = useState<string | null>(null);
+  const [aiOutputLanguage, setAiOutputLanguage] = useState(transcriptLanguage);
+
+  type AiToolTab =
+    | "summarize"
+    | "extract_key_points"
+    | "extract_action_items"
+    | "identify_topics";
+
+  const aiQuickTools: {
+    name: string;
+    taskType: AiToolTab;
+    icon: React.ElementType;
+  }[] = [
+    {name: "Summarize", taskType: "summarize", icon: Brain},
+    {name: "Key Points", taskType: "extract_key_points", icon: ListChecks},
+    {
+      name: "Action Items",
+      taskType: "extract_action_items",
+      icon: ClipboardCheck,
+    },
+    {name: "Topics", taskType: "identify_topics", icon: Hash},
+  ];
 
   useEffect(() => {
     return () => {
@@ -102,7 +124,6 @@ export default function ResultsView({
       }
     };
   }, []);
-
   useEffect(() => {
     if (newlyAddedResultId) {
       const timer = setTimeout(() => {
@@ -111,13 +132,15 @@ export default function ResultsView({
       return () => clearTimeout(timer);
     }
   }, [newlyAddedResultId]);
+  useEffect(() => {
+    setAiOutputLanguage(transcriptLanguage);
+  }, [transcriptLanguage]);
 
-  const copyText = () => {
+  const copyText = () =>
     navigator.clipboard.writeText(transcriptionData.text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  };
 
   const zipAll = async () => {
     setZipping(true);
@@ -154,7 +177,6 @@ export default function ResultsView({
         return "Action Items";
       case "identify_topics":
         return "Identified Topics";
-
       default:
         console.warn(`Unhandled task type: ${taskType}`);
         return "AI Result";
@@ -166,11 +188,7 @@ export default function ResultsView({
     questionForTask?: string,
     forceRegenerate = false
   ) => {
-    if (!transcriptionData.text) return;
-
-    // For non-Q&A tasks, check if a result of the same type already exists.
     if (taskType !== "custom_question" && !forceRegenerate) {
-      // MODIFIED CONDITION
       const existingResult = aiResults.find(
         (r) => r.taskType === taskType && !r.error
       );
@@ -180,15 +198,12 @@ export default function ResultsView({
         );
         setExpandedResultId(existingResult.id);
         setNewlyAddedResultId(existingResult.id);
-        return; // Exit
+        return;
       }
     }
-
-    // When regenerating, we first remove the old result of the same type
     if (forceRegenerate) {
       setAiResults((prev) => prev.filter((r) => r.taskType !== taskType));
     }
-
     if (
       taskType === "custom_question" &&
       (!questionForTask || questionForTask.trim() === "")
@@ -196,7 +211,6 @@ export default function ResultsView({
       setGlobalAiError("Please enter a question.");
       return;
     }
-
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -204,15 +218,14 @@ export default function ResultsView({
 
     setIsStreamingAi(true);
     setActiveAiTask(taskType);
-    setStreamingAiText("");
     setGlobalAiError(null);
     let taskWasTruncated = false;
-
     const body: AIInteractionParams = {
       transcriptText: transcriptionData.text,
       taskType: taskType,
       customPrompt:
         taskType === "custom_question" ? questionForTask : undefined,
+      outputLanguage: aiOutputLanguage,
     };
 
     try {
@@ -226,7 +239,6 @@ export default function ResultsView({
       if (response.headers.get("X-Content-Truncated") === "true") {
         taskWasTruncated = true;
       }
-
       if (!response.ok) {
         let errorData;
         try {
@@ -243,29 +255,22 @@ export default function ResultsView({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulatedText = "";
-
-      // Re-architected this loop to be inside the async function directly
       while (true) {
         try {
           const {done, value} = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, {stream: true});
           accumulatedText += chunk;
-          setStreamingAiText(accumulatedText);
-        } catch (streamError: unknown) {
-          const err = streamError as {name?: string; message?: string};
-          if (err.name !== "AbortError") {
+        } catch (streamError: any) {
+          if (streamError.name !== "AbortError") {
             setGlobalAiError(
-              "Error reading stream: " + (err.message || "Unknown stream error")
+              "Error reading stream: " + (streamError.message || "Unknown")
             );
-          } else {
-            console.log("Stream reading aborted by controller.");
           }
           throw streamError;
         }
       }
 
-      // This code now runs after the while loop (stream) has finished
       if (!abortControllerRef.current?.signal.aborted) {
         const newResultId = `${taskType}-${Date.now()}`;
         setAiResults((prev) => [
@@ -281,17 +286,17 @@ export default function ResultsView({
         setNewlyAddedResultId(newResultId);
         if (taskType === "custom_question") setCustomQuestion("");
       }
-    } catch (error: unknown) {
-      const err = error as {message?: string; name?: string};
-      if (err.name !== "AbortError") {
-        setGlobalAiError(err.message || `Failed to process ${taskType} task.`);
+    } catch (error: any) {
+      if (error.name !== "AbortError") {
+        setGlobalAiError(
+          error.message || `Failed to process ${taskType} task.`
+        );
       } else {
         console.log(`AI task ${activeAiTask} aborted.`);
       }
     } finally {
       setIsStreamingAi(false);
       setActiveAiTask(null);
-      setStreamingAiText("");
       abortControllerRef.current = null;
     }
   };
@@ -332,27 +337,6 @@ export default function ResultsView({
       }, 2000);
     });
   };
-
-  // --- Skeleton Component for Loading State ---
-  const AiResultSkeleton: React.FC = () => {
-    return (
-      <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-700/50 shadow-inner">
-        <div className="animate-pulse flex space-x-4">
-          <div className="flex-1 space-y-3 py-1">
-            <div className="h-2 bg-slate-300 dark:bg-slate-600 rounded"></div>
-            <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="h-2 bg-slate-300 dark:bg-slate-600 rounded col-span-2"></div>
-                <div className="h-2 bg-slate-300 dark:bg-slate-600 rounded col-span-1"></div>
-              </div>
-              <div className="h-2 bg-slate-300 dark:bg-slate-600 rounded"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-  // --- End Skeleton Component ---
 
   return (
     <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700 dark:text-slate-200">
@@ -422,121 +406,99 @@ export default function ResultsView({
           />
         )}
       </div>
+      <div className="flex justify-center mb-6">
+        <StyledButton
+          onClick={zipAll}
+          variant="primary"
+          isLoading={zipping}
+          disabled={zipping}
+          className="rounded-full px-6"
+        >
+          <Download size={18} className="mr-2" />
+          {zipping ? "Zipping…" : "Download All (.zip)"}
+        </StyledButton>
+      </div>
 
-      {/* --- AI Interaction Section --- */}
+      {/* --- REFACTORED AI Interaction Section --- */}
       <div className="my-8 py-6 border-t border-b border-slate-200 dark:border-slate-700 space-y-6">
-        <div className="flex justify-between items-center mb-0">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-            AI Insights & Tools
-          </h3>
-          {aiResults.length > 0 && !isStreamingAi && (
-            <StyledButton
-              onClick={handleClearAllAiResults}
-              variant="ghost"
-              size="sm"
-              className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-700/20"
-              aria-label="Clear all AI generated results"
-            >
-              <Trash2 size={14} className="mr-1.5" />
-              Clear All
-            </StyledButton>
-          )}
-        </div>
+        {/* --- Part 1: Quick Tools as Tabs --- */}
+        <div>
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-3">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+              AI Insights
+            </h3>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                Language:
+              </span>
+              <div className="inline-flex rounded-md shadow-sm bg-slate-100 dark:bg-slate-700 p-1">
+                <button
+                  onClick={() => setAiOutputLanguage(transcriptLanguage)}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    aiOutputLanguage === transcriptLanguage
+                      ? "bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-300 font-semibold"
+                      : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                  }`}
+                >
+                  {new Intl.DisplayNames(["en"], {type: "language"})
+                    .of(transcriptLanguage)
+                    ?.split(" ")[0] || transcriptLanguage.toUpperCase()}
+                </button>
+                {transcriptLanguage !== "en" && (
+                  <button
+                    onClick={() => setAiOutputLanguage("en")}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                      aiOutputLanguage === "en"
+                        ? "bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-300 font-semibold"
+                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                    }`}
+                  >
+                    English
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
 
-        {/* AI Quick Tool Buttons */}
-        <div className="pt-1">
-          {" "}
-          {/* Removed the div and h3 that was here */}
-          <div className="flex flex-col sm:flex-row flex-wrap justify-center items-center gap-3">
-            {/* ... Your StyledButtons for Summarize, Key Points, Action Items ... */}
-            {/* Ensure their isLoading is like: isLoading={isStreamingAi && activeAiTask === "summarize"} */}
-            <StyledButton
-              onClick={() => handleGenericAiStreamTask("summarize")}
-              variant="secondary"
-              isLoading={isStreamingAi && activeAiTask === "summarize"}
-              disabled={isStreamingAi || !transcriptionData.text}
-              className="group w-full sm:w-auto"
+          <div className="border-b border-slate-200 dark:border-slate-600">
+            <nav
+              className="-mb-px flex space-x-4 overflow-x-auto"
+              aria-label="Tabs"
             >
-              {isStreamingAi && activeAiTask === "summarize" ? (
-                <Loader2 size={18} className="mr-2 animate-spin" />
-              ) : (
-                <Brain size={18} className="mr-2 group-hover:animate-pulse" />
-              )}
-              {isStreamingAi && activeAiTask === "summarize"
-                ? "Summarizing..."
-                : "Summarize"}
-            </StyledButton>
-            <StyledButton
-              onClick={() => handleGenericAiStreamTask("extract_key_points")}
-              variant="secondary"
-              isLoading={isStreamingAi && activeAiTask === "extract_key_points"}
-              disabled={isStreamingAi || !transcriptionData.text}
-              className="group w-full sm:w-auto"
-            >
-              {isStreamingAi && activeAiTask === "extract_key_points" ? (
-                <Loader2 size={18} className="mr-2 animate-spin" />
-              ) : (
-                <ListChecks
-                  size={18}
-                  className="mr-2 group-hover:scale-110 transition-transform"
-                />
-              )}
-              {isStreamingAi && activeAiTask === "extract_key_points"
-                ? "Extracting..."
-                : "Key Points"}
-            </StyledButton>
-            <StyledButton
-              onClick={() => handleGenericAiStreamTask("extract_action_items")}
-              variant="secondary"
-              isLoading={
-                isStreamingAi && activeAiTask === "extract_action_items"
-              }
-              disabled={isStreamingAi || !transcriptionData.text}
-              className="group w-full sm:w-auto"
-            >
-              {isStreamingAi && activeAiTask === "extract_action_items" ? (
-                <Loader2 size={18} className="mr-2 animate-spin" />
-              ) : (
-                <ClipboardCheck
-                  size={18}
-                  className="mr-2 group-hover:rotate-[-3deg] transition-transform"
-                />
-              )}
-              {isStreamingAi && activeAiTask === "extract_action_items"
-                ? "Extracting..."
-                : "Action Items"}
-            </StyledButton>
-            <StyledButton
-              onClick={() => handleGenericAiStreamTask("identify_topics")}
-              variant="secondary"
-              isLoading={isStreamingAi && activeAiTask === "identify_topics"}
-              disabled={isStreamingAi || !transcriptionData.text}
-              className="group w-full sm:w-auto"
-            >
-              {isStreamingAi && activeAiTask === "identify_topics" ? (
-                <Loader2 size={18} className="mr-2 animate-spin" />
-              ) : (
-                <Hash
-                  size={18}
-                  className="mr-2 group-hover:text-violet-500 transition-colors"
-                />
-              )}
-              {isStreamingAi && activeAiTask === "identify_topics"
-                ? "Identifying..."
-                : "Identify Topics"}
-            </StyledButton>
+              {aiQuickTools.map((tool) => {
+                const isLoadingThisTab =
+                  isStreamingAi && activeAiTask === tool.taskType;
+                return (
+                  <button
+                    key={tool.taskType}
+                    onClick={() => handleGenericAiStreamTask(tool.taskType)} // Tab click now triggers the action
+                    disabled={isStreamingAi || !transcriptionData.text} // Disable all tabs while any task is running
+                    className={`group shrink-0 inline-flex items-center justify-center py-2 px-3 border-b-2 font-medium text-sm transition-colors disabled:opacity-60 disabled:pointer-events-none border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-500`}
+                    aria-busy={isLoadingThisTab}
+                  >
+                    {isLoadingThisTab ? (
+                      <Loader2 size={16} className="mr-2 animate-spin" />
+                    ) : (
+                      <tool.icon size={16} className="mr-2" />
+                    )}
+                    <span>
+                      {isLoadingThisTab ? "Generating..." : tool.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
           </div>
         </div>
 
-        {/* Q&A Form */}
+        {/* --- Part 2: Q&A Section --- */}
         <div>
-          {/* ... Your Q&A Form ... */}
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3 text-center">
             <HelpCircle
               size={20}
               className="inline mr-1 mb-0.5 text-slate-400 dark:text-slate-500"
             />{" "}
-            Ask a Question (Streaming)
+            Ask a Question
           </h3>
           <form onSubmit={handleQuestionSubmitForm} className="space-y-3">
             <div className="flex items-center space-x-2">
@@ -568,38 +530,36 @@ export default function ResultsView({
           </form>
         </div>
 
-        {/* Display Area for AI Results and current streaming text */}
-        <div className="mt-6 space-y-3">
-          {/* Display SKELETON or STREAMING TEXT if a task is active */}
-          {isStreamingAi &&
-            activeAiTask &&
-            (!streamingAiText ? (
-              // If streaming has started but no text has arrived yet, show skeleton
-              <AiResultSkeleton />
-            ) : (
-              // Once text starts arriving, show it
-              <div className="p-4 border border-sky-300 dark:border-sky-700 rounded-lg bg-sky-50 dark:bg-sky-900/20 text-sm text-slate-700 dark:text-slate-200 shadow-inner">
-                <h4 className="font-semibold mb-2 text-sky-600 dark:text-sky-400 flex items-center">
-                  <Loader2 size={16} className="animate-spin mr-2" />
-                  Generating {getTaskDisplayName(activeAiTask)}...
-                </h4>
-                <div className="whitespace-pre-wrap break-words mt-1">
-                  {streamingAiText}
-                  <span className="inline-block animate-ping w-1.5 h-1.5 bg-sky-500 rounded-full ml-1"></span>
-                </div>
-              </div>
-            ))}
+        {/* --- Part 3: Results Area --- */}
+        <div className="mt-6 space-y-4">
+          {(aiResults.length > 0 || isStreamingAi || globalAiError) && (
+            <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-2">
+              <h4 className="text-base font-semibold text-slate-700 dark:text-slate-200">
+                Generated Insights
+              </h4>
+              {aiResults.length > 0 && !isStreamingAi && (
+                <StyledButton
+                  onClick={handleClearAllAiResults}
+                  variant="ghost"
+                  size="sm"
+                  className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-500"
+                  aria-label="Clear all AI results"
+                >
+                  <Trash2 size={14} className="mr-1.5" />
+                  Clear All
+                </StyledButton>
+              )}
+            </div>
+          )}
 
-          {/* Display global AI error if any */}
           {globalAiError && !isStreamingAi && (
-            <div className="p-3 border border-red-300 rounded-lg bg-red-50 text-sm text-red-700">
+            <div className="p-3 border border-red-300 rounded-lg bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">
               <p className="break-words">
                 <strong>Error:</strong> {globalAiError}
               </p>
             </div>
           )}
 
-          {/* List of completed AI Results (Accordion) */}
           {aiResults.map((result) => (
             <div
               key={result.id}
@@ -641,7 +601,7 @@ export default function ResultsView({
                   className="p-4 border-t border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
                 >
                   {result.wasTruncated && (
-                    <div className="mb-3 p-2.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-700 border border-amber-300 dark:border-amber-600 rounded-md flex items-center space-x-2">
+                    <div className="mb-3 p-2.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-700 border border-amber-300 dark:border-amber-600 rounded-md flex items-center space-x-2">
                       <AlertCircle
                         size={16}
                         className="flex-shrink-0 text-amber-500 dark:text-amber-400"
@@ -653,7 +613,6 @@ export default function ResultsView({
                       </span>
                     </div>
                   )}
-
                   {!result.error &&
                     result.text &&
                     (LIST_TASK_TYPES.has(result.taskType) ? (
@@ -704,9 +663,7 @@ export default function ResultsView({
                       {result.error}
                     </p>
                   )}
-
                   <div className="mt-4 flex justify-end items-center space-x-2">
-                    {/* NEW REGENERATE BUTTON */}
                     {result.taskType !== "custom_question" && (
                       <StyledButton
                         size="sm"
@@ -737,7 +694,8 @@ export default function ResultsView({
                       className="text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-700/30 disabled:text-slate-400 dark:disabled:text-slate-500"
                       disabled={!result.text || !!result.error}
                     >
-                      <ClipboardCopy size={14} className="mr-1.5" /> Copy All
+                      <ClipboardCopy size={14} className="mr-1.5" />
+                      Copy All
                     </StyledButton>
                     <StyledButton
                       size="sm"
@@ -748,7 +706,8 @@ export default function ResultsView({
                         result.taskType
                       )} result`}
                     >
-                      <XCircle size={14} className="mr-1.5" /> Clear
+                      <XCircle size={14} className="mr-1.5" />
+                      Clear
                     </StyledButton>
                   </div>
                 </div>
@@ -758,29 +717,17 @@ export default function ResultsView({
         </div>
       </div>
 
-      {/* ... Footer Buttons ... */}
-      <div className="flex justify-center mb-6">
-        <StyledButton
-          onClick={zipAll}
-          variant="primary"
-          isLoading={zipping}
-          disabled={zipping}
-          className="rounded-full px-6"
-        >
-          <Download size={18} className="mr-2" />
-          {zipping ? "Zipping…" : "Download All (.zip)"}
-        </StyledButton>
-      </div>
       <StyledButton
         onClick={onRestart}
         variant="secondary"
         size="lg"
-        className="w-full rounded-full mb-6"
+        className="w-full rounded-full mt-8 mb-6"
       >
         New Transcription
       </StyledButton>
       <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
-        Transcription completed using <strong>{modeLabel(mode)}</strong> mode.
+        Transcription completed using{" "}
+        <strong>{TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode]}</strong> mode.
       </p>
     </div>
   );
@@ -791,7 +738,7 @@ function GrayProgressStepper({steps}: {steps: AppStep[]}) {
     <nav aria-label="Progress" className="mb-8">
       <ol role="list" className="relative flex items-start justify-between">
         <div
-          className="absolute top-3.5 left-4 right-4 h-0.5 bg-gray-200"
+          className="absolute top-3.5 left-4 right-4 h-0.5 bg-gray-200 dark:bg-slate-700"
           aria-hidden="true"
         />
         {steps.map((step) => (
@@ -799,10 +746,10 @@ function GrayProgressStepper({steps}: {steps: AppStep[]}) {
             key={step.id}
             className="relative flex flex-col items-center w-1/3"
           >
-            <div className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full bg-gray-400 text-white">
+            <div className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full bg-gray-400 dark:bg-slate-600 text-white">
               <step.icon className="h-5 w-5" />
             </div>
-            <p className="text-xs text-center mt-2 w-20 truncate text-gray-500">
+            <p className="text-xs text-center mt-2 w-20 truncate text-gray-500 dark:text-slate-400">
               {step.name}
             </p>
           </li>
