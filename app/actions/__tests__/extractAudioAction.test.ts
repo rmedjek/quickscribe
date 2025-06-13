@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import { extractAudioAction } from '../extractAudioAction';
+import type { ExecOptions, ExecException } from 'node:child_process';
 
 // Mock fs and exec
 jest.unstable_mockModule('node:fs/promises', () => ({
@@ -36,9 +37,9 @@ describe('extractAudioAction', () => {
     execMock.mockImplementation(
       (
         cmd: string,
-        opts: Record<string, unknown>,
-        cb: (err: Error | null, out: string, errOut: string) => void,
-      ) => cb(new Error('boom'), '', '')
+        opts: ExecOptions,
+        cb: (err: ExecException | null, out: string, errOut: string) => void,
+      ) => cb(new Error('boom') as ExecException, '', '')
     );
     const file = new File(['data'], 'vid.mp4', { type: 'video/mp4' });
     const fd = new FormData();
@@ -51,7 +52,10 @@ describe('extractAudioAction', () => {
   });
 
   it('returns success when ffmpeg succeeds', async () => {
-    execMock.mockImplementation((cmd: string, opts: Record<string, unknown>, cb: (err: null, out: string, errOut: string) => void) => cb(null, '', ''));
+    execMock.mockImplementation(
+      (cmd: string, opts: ExecOptions, cb: (err: ExecException | null, out: string, errOut: string) => void) =>
+        cb(null, '', '')
+    );
     const file = new File(['data'], 'vid.mp4', { type: 'video/mp4' });
     const fd = new FormData();
     fd.append('videoFile', file);

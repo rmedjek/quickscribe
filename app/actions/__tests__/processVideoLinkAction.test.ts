@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import { processVideoLinkAction } from '../processVideoLinkAction';
+import type { ExecOptions, ExecException } from 'node:child_process';
 
 // Mock dependencies
 jest.unstable_mockModule('node-fetch-commonjs', () => ({ default: jest.fn() }));
@@ -32,8 +33,8 @@ describe('processVideoLinkAction', () => {
     execMock.mockImplementation(
       (
         cmd: string,
-        opts: Record<string, unknown>,
-        cb: (err: Error | null, out: string, errOut: string) => void,
+        opts: ExecOptions,
+        cb: (err: ExecException | null, out: string, errOut: string) => void,
       ) => cb(null, '', '')
     );
     const res = await processVideoLinkAction('https://example.com/video.mp4', 'chill');
