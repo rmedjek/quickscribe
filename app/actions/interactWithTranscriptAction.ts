@@ -24,7 +24,7 @@ const AI_RESPONSE_RESERVATION_PERCENT = isNaN(reservationPercent) || reservation
                                         ? 0.40 // Fallback to 40% if value is invalid
                                         : reservationPercent;
 
-export type AIInteractionTaskType = "summarize" | "extract_key_points" | "custom_question" | "extract_action_items" | "identify_topics";
+export type AIInteractionTaskType = "summarize" | "extract_key_points" | "custom_question" | "extract_action_items" | "identify_topics" | "draft_email";
 export interface AIInteractionParams { transcriptText: string; taskType: AIInteractionTaskType; customPrompt?: string; llmModel?: string; outputLanguage: string;}
 type GroqMessage = Groq.Chat.Completions.ChatCompletionMessageParam;
 
@@ -93,6 +93,16 @@ export async function interactWithTranscriptAction(
         "List up to 5-7 of the most significant topics. " +
         "Present the topics as a simple bulleted list, with each topic being a short, concise phrase (2-5 words). " +
         "If the transcript is too short or lacks clear topics, state 'No distinct topics could be identified.'" ${languageInstruction}`;
+      break;
+    case "draft_email":
+      systemPrompt =
+        "You are an AI assistant tasked with drafting a professional summary email based on a meeting transcript. " +
+        "Your response MUST be structured with clear markers. " +
+        "First, create a concise and informative subject line, prefixed with 'Subject: '. " +
+        "Then, write the email body, prefixed with 'Body: '. " +
+        "The body should start with a brief opening, followed by a bulleted list of the key discussion points or outcomes from the transcript, and end with a concluding sentence. " +
+        "If clear action items were identified, include them in a separate section within the body under a subheading 'Action Items:'. " +
+        "Do not include any introductory or concluding text outside of the 'Subject:' and 'Body:' sections.";
       break;
     default:
       console.error(`[AI Action] Error: Unsupported AI task type: ${taskType}`);
