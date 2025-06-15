@@ -8,6 +8,7 @@ import PageLayout from "@/components/PageLayout";
 import InputSelectionView from "@/components/InputSelectionView";
 import ConfirmationView, {
   TranscriptionMode,
+  TranscriptionEngine,
 } from "@/components/ConfirmationView";
 import ProcessingView, {StageDisplayData} from "@/components/ProcessingView";
 import ResultsView from "@/components/ResultsView";
@@ -20,6 +21,7 @@ import {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
 import {useServerLinkProcessor} from "./hooks/useServerLinkProcessor";
 import {useClientFileProcessor} from "./hooks/useClientFileProcessor";
 import {useServerFileUploadProcessor} from "./hooks/useServerFileUploadProcessor";
+import {useAssemblyAIProcessor} from "./hooks/useAssemblyAIProcessor";
 
 import type {SelectedInputType} from "@/types/app";
 import {StepperProvider, useStepper} from "./contexts/StepperContext";
@@ -230,6 +232,13 @@ function HomePageInner() {
     []
   );
 
+  const {processFile: processWithAssemblyAI} = useAssemblyAIProcessor({
+    onProcessingComplete: handleProcessingComplete,
+    onError: (m, f, sz) => handleError("AssemblyAI Processing", m, f, sz),
+    onStatusUpdate: handleStatusUpdate,
+    onStagesUpdate: handleStagesUpdate,
+  });
+
   /* processing hooks ----------------------------------------------------- */
   const {processFile: processClientFile} = useClientFileProcessor({
     ffmpeg,
@@ -347,32 +356,51 @@ function HomePageInner() {
 
   const handleConfirmation = (
     processingPath: "client" | "server",
-    mode: TranscriptionMode
+    mode: TranscriptionMode,
+    engine: TranscriptionEngine
   ) => {
     setSelectedMode(mode);
+    console.log(
+      `[Confirmation] Path: ${processingPath}, Mode: ${mode}, Engine: ${engine}`
+    );
 
-    if (selectedInputType === "link" && submittedLink) {
-      setCurrentView(ViewState.ProcessingServer);
-      processServerLink(submittedLink, mode);
-    } else if (selectedFile && selectedInputType) {
-      const isAudio = selectedInputType === "audio";
-      if (processingPath === "client") {
-        // <<< Path for "Process in Browser"
-        setCurrentView(ViewState.ProcessingClient);
-        processClientFile(selectedFile, mode, isAudio);
+    if (engine === "assembly") {
+      // AssemblyAI path - it always runs on the server for our setup
+      if (selectedFile) {
+        setCurrentView(ViewState.ProcessingServer); // Use the same processing view
+        processWithAssemblyAI(selectedFile, selectedInputType === "audio");
       } else {
-        // processingPath === "server"
-        setCurrentView(ViewState.ProcessingServer);
-        processServerUploadedFile(selectedFile, mode, isAudio); // NOT this for client path
+        handleError(
+          "AssemblyAI Error",
+          "Link processing is not yet configured for AssemblyAI engine. Please select a file."
+        );
       }
+      return;
+    }
+
+    // --- Groq Engine Path (existing logic) ---
+    if (processingPath === "client" && selectedFile && selectedInputType) {
+      // Client-side Groq/Whisper
+      setCurrentView(ViewState.ProcessingClient);
+      processClientFile(selectedFile, mode, selectedInputType === "audio");
     } else {
-      console.error(
-        "Confirmation error: No valid input (file/link and type) found."
-      );
-      handleError(
-        "Confirmation Error",
-        "No valid input found for processing. Please try selecting your input again."
-      );
+      // Server-side Groq/Whisper (for files or links)
+      setCurrentView(ViewState.ProcessingServer);
+      if (selectedFile && selectedInputType) {
+        processServerUploadedFile(
+          selectedFile,
+          mode,
+          selectedInputType === "audio"
+        );
+      } else if (submittedLink) {
+        // You could add logic here to block AssemblyAI for links if needed
+        processServerLink(submittedLink, mode);
+      } else {
+        handleError(
+          "Confirmation Error",
+          "No valid input found for processing."
+        );
+      }
     }
   };
 
