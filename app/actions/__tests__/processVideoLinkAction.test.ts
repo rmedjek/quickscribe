@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import { processVideoLinkAction } from '../processVideoLinkAction';
+import type { ExecOptions, ExecException } from 'node:child_process';
 
 // Mock dependencies
 jest.unstable_mockModule('node-fetch-commonjs', () => ({ default: jest.fn() }));
@@ -29,6 +30,14 @@ describe('processVideoLinkAction', () => {
   });
 
   it('propagates transcription failure', async () => {
+    execMock.mockImplementation(
+      (
+        cmd: string,
+        opts: ExecOptions,
+        cb: (err: ExecException | null, out: string, errOut: string) => void,
+      ) => cb(null, '', '')
+    );
+    const res = await processVideoLinkAction('https://example.com/video.mp4', 'chill');
     execMock.mockImplementation((cmd: string, opts: any, cb: Function) => cb(null, '', ''));
     const res = await processVideoLinkAction('https://example.com/video.mp4', 'core');
     expect(res.success).toBe(false);
