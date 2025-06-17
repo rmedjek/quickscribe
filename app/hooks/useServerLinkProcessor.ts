@@ -8,6 +8,7 @@ import { TranscriptionMode } from "@/components/ConfirmationView";
 import { StageDisplayData } from "@/components/ProcessingView";
 import { useStageUpdater } from "./useStageUpdater";
 import { useStepper } from "../contexts/StepperContext";
+import { TRANSCRIPTION_MODEL_DISPLAY_NAMES } from "@/types/app";
 
 const AUDIO_EST_MS = 12_000;
 
@@ -45,6 +46,7 @@ export function useServerLinkProcessor({
     async (link: string, mode: TranscriptionMode) => {
       setBusy(true);
       setStep?.("process");
+      const modelDisplayName = TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode];
 
       onStagesUpdate([
         {
@@ -66,11 +68,6 @@ export function useServerLinkProcessor({
         },
       ]);
 
-      const modelName =
-        mode === "turbo"
-          ? "Whisper Large v3"
-          : "Distil-Whisper Large-v3-en";
-
       /* ---------------- fake progress while server extracts ------- */
       timer.current = setTimeout(() => {
         patch("audio", {
@@ -83,7 +80,7 @@ export function useServerLinkProcessor({
         patch("groq", {
           isActive: true,
           isIndeterminate: true,
-          subText: `Processing using Groq's ${modelName} model`,
+          subText: `Processing using Groq's ${modelDisplayName} model`,
         });
 
         /* 🔔 stepper advance */
@@ -114,7 +111,7 @@ export function useServerLinkProcessor({
         progress: 1,
         isActive: false,
         isComplete: true,
-        subText: `Processed with Groq's ${modelName} model`,
+        subText: `Processed with Groq's ${modelDisplayName} model`,
       });
 
       onProcessingComplete(res.data);

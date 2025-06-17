@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/lib/ffmpeg-utils.ts
 import { FFmpeg, FFmpegProgressData } from '@ffmpeg/ffmpeg'; // Import types from your .d.ts
 import { fetchFile } from '@ffmpeg/util';

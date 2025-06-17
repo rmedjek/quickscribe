@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { jest } from '@jest/globals';
 process.env.GROQ_API_KEY = 'test';
 
@@ -34,6 +35,7 @@ describe('transcribeAudioAction', () => {
   it('returns error when audioBlob missing', async () => {
     const fd = new FormData();
     const res = await transcribeAudioAction(fd, 'chill');
+    const res = await transcribeAudioAction(fd as any, 'core');
     expect(res.success).toBe(false);
   });
 
@@ -45,6 +47,7 @@ describe('transcribeAudioAction', () => {
     const fd = new FormData();
     fd.append('audioBlob', new File(['data'], 'audio.opus', { type: 'audio/opus' }));
     const res = await transcribeAudioAction(fd, 'chill');
+    const res = await transcribeAudioAction(fd as any, 'core');
     expect(res.success).toBe(true);
     expect(res.data?.text).toBe('hi');
   });
@@ -56,6 +59,7 @@ describe('transcribeAudioAction', () => {
     const fd = new FormData();
     fd.append('audioBlob', new File(['data'], 'a.opus', { type: 'audio/opus' }));
     const res = await transcribeAudioAction(fd, 'chill');
+    const res = await transcribeAudioAction(fd as any, 'core');
     expect(res.success).toBe(false);
     expect(res.error).toMatch(/temporarily unavailable/);
   });

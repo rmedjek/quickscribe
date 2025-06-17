@@ -10,6 +10,9 @@ interface InputSelectionViewProps {
   onLinkSubmitted: (link: string) => void;
 }
 
+const YOUTUBE_URL_REGEX =
+  /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
+
 // Define accepted MIME types
 const ACCEPTED_VIDEO_TYPES = [
   "video/mp4",
@@ -80,7 +83,20 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    validateAndSelectFile(event.target.files?.[0]);
+    const file = event.target.files?.[0];
+    if (file) {
+      validateAndSelectFile(file);
+    }
+    if (event.target) {
+      event.target.value = "";
+    }
+  };
+
+  const handleButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    // --- FIX IS HERE ---
+    event.stopPropagation(); // Stop the click from bubbling up to the parent div
+    // --- END FIX ---
+    handleCardClickToUpload(); // Then perform the action
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
@@ -108,12 +124,44 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
 
   const handleLinkSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setLinkError("");
+
     if (!linkUrl.trim()) {
       setLinkError("Please enter a video link."); // Keep as video link for this section
       return;
     }
+
     try {
-      new URL(linkUrl);
+      const url = new URL(linkUrl);
+      // Check if it's a YouTube search results page
+      if (url.hostname.includes("youtube.com") && url.pathname === "/results") {
+        setLinkError(
+          "Please provide a link to a single video, not a search results page."
+        );
+        return;
+      }
+      // A simple check if it looks like a valid YouTube URL but has no video ID
+      if (
+        url.hostname.includes("youtube.com") &&
+        url.pathname === "/watch" &&
+        !url.searchParams.has("v")
+      ) {
+        setLinkError(
+          "This looks like a YouTube link, but it's missing the video ID (e.g., ?v=...)."
+        );
+        return;
+      }
+
+      // Use regex for a more general check (optional but good)
+      if (
+        url.hostname.includes("youtube") &&
+        !YOUTUBE_URL_REGEX.test(linkUrl)
+      ) {
+        setLinkError("Please provide a valid YouTube video link.");
+        return;
+      }
+
+      // If all checks pass, submit the link
       onLinkSubmitted(linkUrl);
       setLinkUrl("");
     } catch {
@@ -168,7 +216,7 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
           />
           <StyledButton
             variant="primary"
-            onClick={handleCardClickToUpload}
+            onClick={handleButtonClick}
             className="bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-500"
           >
             Select File {/* Changed from "Select Video" */}

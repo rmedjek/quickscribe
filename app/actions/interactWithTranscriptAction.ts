@@ -16,18 +16,25 @@ const groq = new Groq({
   maxRetries: 0, // Let our custom retryWithBackoff handle retries
 });
 
-//const DEFAULT_LLM_MODEL = "llama3-8b-8192";
-const DEFAULT_LLM_MODEL = "llama3-70b-8192";
+const DEFAULT_LLM_MODEL = process.env.GROQ_DEFAULT_LLM_MODEL || "llama3-8b-8192";
 
-export type AIInteractionTaskType = "summarize" | "extract_key_points" | "custom_question" | "extract_action_items" | "identify_topics";
-export interface AIInteractionParams { transcriptText: string; taskType: AIInteractionTaskType; customPrompt?: string; llmModel?: string; }
+// Parse reservation percent, with a fallback and validation
+const reservationPercent = parseFloat(process.env.AI_RESPONSE_TOKEN_RESERVATION_PERCENT || "0.40");
+const AI_RESPONSE_RESERVATION_PERCENT = isNaN(reservationPercent) || reservationPercent < 0.1 || reservationPercent > 0.8 
+                                        ? 0.40 // Fallback to 40% if value is invalid
+                                        : reservationPercent;
+
+export type AIInteractionTaskType = "summarize" | "extract_key_points" | "custom_question" | "extract_action_items" | "identify_topics" | "draft_email";
+export interface AIInteractionParams { transcriptText: string; taskType: AIInteractionTaskType; customPrompt?: string; llmModel?: string; outputLanguage: string;}
 type GroqMessage = Groq.Chat.Completions.ChatCompletionMessageParam;
 
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+    [process.env.GROQ_DEFAULT_LLM_MODEL || "llama3-8b-8192"]: 7800, // You can make this map more dynamic if you support more models via env
     "llama3-8b-8192": 7800,
     "llama3-70b-8192": 7800,
     "gemma-7b-it": 7800,
 };
+
 const DEFAULT_CONTEXT_WINDOW = 7800;
 
 function truncateStringToTokenLimit(text: string, limit: number, encoding: Tiktoken): { truncatedText: string; tokenCount: number; wasTruncated: boolean } {
@@ -46,8 +53,9 @@ function truncateStringToTokenLimit(text: string, limit: number, encoding: Tikto
 export async function interactWithTranscriptAction(
   params: AIInteractionParams
 ): Promise<Response> {
-  const { transcriptText, taskType, customPrompt, llmModel } = params;
+  const { transcriptText, taskType, customPrompt, llmModel, outputLanguage } = params;
   const modelToUse = llmModel || DEFAULT_LLM_MODEL;
+  
   console.log(`[AI Action] Called for task: "${taskType}". Model: "${modelToUse}". Custom Prompt: ${customPrompt ? `"${customPrompt.substring(0,50)}..."` : 'N/A'}`);
 
   if (!transcriptText || transcriptText.trim() === "") {
@@ -59,12 +67,14 @@ export async function interactWithTranscriptAction(
   let finalUserMessageContentForLlm: string;
   let userPayloadWasActuallyTruncated = false;
 
+  const languageInstruction = `Please provide your response in ${outputLanguage}.`;
+
   switch (taskType) {
     case "summarize":
-      systemPrompt = "You are a helpful AI assistant. Your task is to provide a concise summary of the following transcript. Focus on the main points and key information. The summary should be a single paragraph or a few short paragraphs if necessary.";
+      systemPrompt = `You are a helpful AI assistant. Your task is to provide a concise summary of the following transcript. Focus on the main points and key information. The summary should be a single paragraph or a few short paragraphs if necessary. ${languageInstruction}`;
       break;
     case "extract_key_points":
-      systemPrompt = "You are a helpful AI assistant. Your task is to extract the key points or main takeaways from the following transcript. Present them clearly, ideally as a bulleted list (e.g., using '-' or '*' as bullet points). Each point should be concise.";
+      systemPrompt = `You are a helpful AI assistant. Your task is to extract the key points or main takeaways from the following transcript. Present them clearly, ideally as a bulleted list (e.g., using '-' or '*' as bullet points). Each point should be concise. ${languageInstruction}`;
       break;
     case "custom_question":
       if (!customPrompt || customPrompt.trim() === "") {
@@ -72,17 +82,27 @@ export async function interactWithTranscriptAction(
         return Response.json({ success: false, error: "Question cannot be empty for the Q&A task." }, { status: 400 });
       }
       systemPrompt =
-        "You are an AI assistant. Your task is to answer the question based *solely* on the provided transcript. If the answer is not in the text, state that clearly. Do not make up information. Be concise.";
+        `You are an AI assistant. Your task is to answer the question based *solely* on the provided transcript. If the answer is not in the text, state that clearly. Do not make up information. Be concise. ${languageInstruction}`;
       break;
     case "extract_action_items":
-      systemPrompt = "You are an AI assistant specializing in identifying action items. Analyze the transcript and extract all explicit/implied action items, tasks, or commitments. For each, identify: 1. The action. 2. Who is responsible (if mentioned). 3. Any deadline (if mentioned). Present as a clear, numbered or bulleted list. If none, state 'No specific action items were identified.'";
+      systemPrompt = `You are an AI assistant specializing in identifying action items. Analyze the transcript and extract all explicit/implied action items, tasks, or commitments. For each, identify: 1. The action. 2. Who is responsible (if mentioned). 3. Any deadline (if mentioned). Present as a clear, numbered or bulleted list. If none, state 'No specific action items were identified.' ${languageInstruction}`;
       break;
     case "identify_topics":
       systemPrompt =
-        "You are a helpful AI assistant. Your task is to analyze the following transcript and identify the main topics or subjects discussed. " +
+        `You are a helpful AI assistant. Your task is to analyze the following transcript and identify the main topics or subjects discussed. " +
         "List up to 5-7 of the most significant topics. " +
         "Present the topics as a simple bulleted list, with each topic being a short, concise phrase (2-5 words). " +
-        "If the transcript is too short or lacks clear topics, state 'No distinct topics could be identified.'";
+        "If the transcript is too short or lacks clear topics, state 'No distinct topics could be identified.'" ${languageInstruction}`;
+      break;
+    case "draft_email":
+      systemPrompt =
+        "You are an AI assistant tasked with drafting a professional summary email based on a meeting transcript. " +
+        "Your response MUST be structured with clear markers. " +
+        "First, create a concise and informative subject line, prefixed with 'Subject: '. " +
+        "Then, write the email body, prefixed with 'Body: '. " +
+        "The body should start with a brief opening, followed by a bulleted list of the key discussion points or outcomes from the transcript, and end with a concluding sentence. " +
+        "If clear action items were identified, include them in a separate section within the body under a subheading 'Action Items:'. " +
+        "Do not include any introductory or concluding text outside of the 'Subject:' and 'Body:' sections.";
       break;
     default:
       console.error(`[AI Action] Error: Unsupported AI task type: ${taskType}`);
@@ -99,7 +119,11 @@ export async function interactWithTranscriptAction(
 
   const systemPromptTokens = encoding.encode(systemPrompt).length;
   const modelContextLimit = MODEL_CONTEXT_WINDOWS[modelToUse] || DEFAULT_CONTEXT_WINDOW;
-  const TOKENS_RESERVED_FOR_OUTPUT_AND_TPM_BUFFER = Math.max(1500, Math.floor(modelContextLimit * 0.40));
+
+  const TOKENS_RESERVED_FOR_OUTPUT_AND_TPM_BUFFER = Math.max(
+    500, // minimum reservation
+    Math.floor(modelContextLimit * AI_RESPONSE_RESERVATION_PERCENT)
+  );
   const availableTokensForUserPayload = modelContextLimit - systemPromptTokens - TOKENS_RESERVED_FOR_OUTPUT_AND_TPM_BUFFER;
 
   if (availableTokensForUserPayload <= 100) {

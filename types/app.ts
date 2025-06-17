@@ -1,16 +1,12 @@
 // types/app.ts
 import type { ElementType } from "react";
 import { Settings, Waves, FileText } from "lucide-react";
+import { TranscriptionMode } from "@/components/ConfirmationView";
+import { AIInteractionTaskType } from "@/actions/interactWithTranscriptAction";
 // ---------------------------------------------------------------------
 //  Common, shareable application‑level types.
 // ---------------------------------------------------------------------
 
-/**
- * What kind of input the user has provided.
- * – "video"  = any recognised video container (mp4, mov, …)
- * – "audio"  = standalone audio file (mp3, wav, opus …)
- * – "link"   = URL that will be downloaded / processed server‑side
- */
 export type SelectedInputType = "video" | "audio" | "link";
 
 // ---------------------------------------------------------------------------
@@ -28,3 +24,41 @@ export const APP_STEPS: AppStep[] = [
   { id: "process", name: "Process Audio", icon: Waves },
   { id: "transcribe", name: "Get Transcripts", icon: FileText },
 ];
+
+// Record to map the internal `TranscriptionMode` type to the model display name.
+export const TRANSCRIPTION_MODEL_DISPLAY_NAMES: Record<TranscriptionMode, string> = {
+  core: "Whisper Large v3",
+  turbo: "Whisper Large v3 (Turbo)", // Or whatever you want the turbo display name to be
+};
+
+export const TRANSCRIPTION_MODELS: Record<TranscriptionMode, string> = {
+  core: process.env.GROQ_TRANSCRIPTION_MODEL_CORE || 'whisper-large-v3',
+  turbo: process.env.GROQ_TRANSCRIPTION_MODEL_TURBO || 'whisper-large-v3-turbo',
+};
+
+export const parseListItems = (text: string): string[] => {
+  if (!text) return [];
+  const potentialItems = text
+    .split("\n")
+    .filter((line) => /^\s*(\*|-|\d+\.)\s+/.test(line));
+  if (potentialItems.length > 0) {
+    return potentialItems.map((line) =>
+      line.replace(/^\s*(\*|-|\d+\.)\s+/, "").trim()
+    );
+  }
+  return text.split("\n").filter((line) => line.trim() !== "");
+};
+
+export const LIST_TASK_TYPES = new Set<AIInteractionTaskType>([
+  "extract_key_points",
+  "extract_action_items",
+  "identify_topics",
+]);
+export interface AiResultItem {
+  id: string;
+  taskType: AIInteractionTaskType;
+  text: string;
+  wasTruncated: boolean;
+  error?: string;
+  isStreaming?: boolean;
+}

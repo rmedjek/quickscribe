@@ -8,9 +8,9 @@ import {
   Server,
   CloudCog,
   Zap,
-  Snowflake,
-  Music, // Icon for Audio
-  Video, // Icon for Video
+  Shield,
+  Music,
+  Video,
 } from "lucide-react";
 import {APP_STEPS} from "@/types/app";
 import StyledButton from "./StyledButton";
@@ -18,7 +18,7 @@ import ProgressStepper from "./ProgressStepper";
 import {SelectedInputType} from "@/types/app";
 
 const MAX_CLIENT_SIZE_BYTES = 200 * 1024 * 1024; // 200MB example
-export type TranscriptionMode = "chill" | "turbo";
+export type TranscriptionMode = "core" | "turbo";
 
 interface ConfirmationViewProps {
   file: File | null;
@@ -44,7 +44,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   const isLinkProvided = !!link && !file; // This logic is fine
   const isLargeFile = isFileProvided && file.size > MAX_CLIENT_SIZE_BYTES;
 
-  const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("chill");
+  const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 Bytes";
@@ -111,32 +111,32 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
         )}
       </div>
 
-      {/* Chill/Turbo Toggle & Mode Cards (only if file or link is provided) */}
+      {/* core/Turbo Toggle & Mode Cards (only if file or link is provided) */}
       {(isFileProvided || isLinkProvided) && (
         <>
-          {/* ... (Chill/Turbo toggle and Mode Cards remain the same) ... */}
+          {/* ... (core/Turbo toggle and Mode Cards remain the same) ... */}
           <div className="mb-6 flex items-center justify-center space-x-2">
             <span
               className={`px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
-                selectedMode === "chill"
+                selectedMode === "core"
                   ? "bg-sky-500 text-white shadow-md"
                   : "text-slate-500 hover:bg-slate-100"
               }`}
-              onClick={() => setSelectedMode("chill")}
+              onClick={() => setSelectedMode("core")}
             >
-              Chill
+              Core
             </span>
             <div
               className={`w-14 h-7 flex items-center rounded-full p-1 cursor-pointer transition-colors ease-in-out duration-300 ${
                 selectedMode === "turbo" ? "bg-orange-500" : "bg-sky-500"
               }`}
               onClick={() =>
-                setSelectedMode(selectedMode === "chill" ? "turbo" : "chill")
+                setSelectedMode(selectedMode === "core" ? "turbo" : "core")
               }
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setSelectedMode(selectedMode === "chill" ? "turbo" : "chill");
+                  setSelectedMode(selectedMode === "core" ? "turbo" : "core");
                 }
               }}
               role="switch"
@@ -168,36 +168,36 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div
                 className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                  selectedMode === "chill"
+                  selectedMode === "core"
                     ? "border-sky-500 bg-sky-50 shadow-lg scale-105"
                     : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300"
                 }`}
-                onClick={() => setSelectedMode("chill")}
+                onClick={() => setSelectedMode("core")}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setSelectedMode("chill");
+                    setSelectedMode("core");
                   }
                 }}
                 role="radio"
-                aria-checked={selectedMode === "chill"}
+                aria-checked={selectedMode === "core"}
                 tabIndex={0}
               >
                 <div className="flex items-center mb-1">
-                  <Snowflake
+                  <Shield
                     size={20}
                     className={`mr-2 ${
-                      selectedMode === "chill"
+                      selectedMode === "core"
                         ? "text-sky-600"
                         : "text-slate-500"
                     }`}
                   />
                   <h4 className="font-semibold text-slate-700 dark:text-slate-200">
-                    Chill Mode
+                    Core Mode
                   </h4>
                 </div>
                 <p className="text-xs text-slate-500">
-                  Efficient & fast with Distil-Whisper. Good for most cases.
+                  Efficient & fast with Whisper-large. Good for most cases.
                 </p>
               </div>
               <div
@@ -222,8 +222,8 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                   </h4>
                 </div>
                 <p className="text-xs text-slate-500">
-                  Highest accuracy with Whisper Large v3. Best for critical
-                  quality.
+                  Highest accuracy with Whisper Large v3 Turbo. Best for
+                  critical quality.
                 </p>
               </div>
             </div>

@@ -13,6 +13,7 @@ import { TranscriptionMode } from "@/components/ConfirmationView";
 import { StageDisplayData } from "@/components/ProcessingView";
 import { useStageUpdater } from "./useStageUpdater";
 import { useStepper } from "../contexts/StepperContext";
+import { TRANSCRIPTION_MODEL_DISPLAY_NAMES } from "@/types/app";
 
 interface Props {
   ffmpeg: FFmpeg | null; // Renamed in calling component to ffmpegFromProp for clarity if preferred
@@ -146,9 +147,9 @@ export function useClientFileProcessor({
 
       // --- Common part: Groq Transcription ---
       setStep?.("transcribe");
-      const modelName = mode === "turbo" ? "Whisper Large v3" : "Distil-Whisper Large-v3-en";
+      
       onStatusUpdate("AI is transcribing your audio…");
-      patch("groq", { isActive: true, isIndeterminate: true, subText: `Processing using Groq's ${modelName} model` });
+      patch("groq", { isActive: true, isIndeterminate: true, subText: `Processing using Groq's ${TRANSCRIPTION_MODEL_DISPLAY_NAMES} model` });
 
       const formData = new FormData();
       const blobFileName = audioBlob.type === "audio/opus" ? "audio.opus" : originalFileName;
@@ -164,7 +165,7 @@ export function useClientFileProcessor({
         return;
       }
 
-      patch("groq", { isIndeterminate: false, progress: 1, isActive: false, isComplete: true, subText: `Processed with Groq's ${modelName} model` });
+      patch("groq", { isIndeterminate: false, progress: 1, isActive: false, isComplete: true, subText: `Processed with Groq's ${TRANSCRIPTION_MODEL_DISPLAY_NAMES} model` });
       onProcessingComplete(res.data);
       setBusy(false);
       setStep("transcribe");
