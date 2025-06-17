@@ -22,13 +22,12 @@ import DownloadButton from "./DownloadButton";
 import JSZip from "jszip";
 import Modal from "./Modal";
 import {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
-import {TranscriptionMode} from "./ConfirmationView";
 import {
   AIInteractionTaskType,
   AIInteractionParams,
 } from "@/actions/interactWithTranscriptAction";
 import {APP_STEPS, TRANSCRIPTION_MODEL_DISPLAY_NAMES} from "@/types/app";
-import type {AppStep} from "@/types/app";
+import type {AppStep, TranscriptionMode} from "@/types/app";
 import {AiResultCard, AiResultItem} from "./AiResultCard";
 
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";

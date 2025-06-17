@@ -1,14 +1,17 @@
 // app/hooks/useServerLinkProcessor.ts
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import { processVideoLinkAction } from "@/actions/processVideoLinkAction";
-import { DetailedTranscriptionResult } from "@/actions/transcribeAudioAction";
-import { TranscriptionMode } from "@/components/ConfirmationView";
-import { StageDisplayData } from "@/components/ProcessingView";
-import { useStageUpdater } from "./useStageUpdater";
-import { useStepper } from "../contexts/StepperContext";
-import { TRANSCRIPTION_MODEL_DISPLAY_NAMES } from "@/types/app";
+import {useState, useCallback, useRef, useEffect} from "react";
+import {processVideoLinkAction} from "@/actions/processVideoLinkAction";
+import {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
+import {StageDisplayData} from "@/components/ProcessingView";
+import {useStageUpdater} from "./useStageUpdater";
+import {useStepper} from "../contexts/StepperContext";
+import {
+  TRANSCRIPTION_MODEL_DISPLAY_NAMES,
+  TranscriptionEngine,
+  TranscriptionMode,
+} from "@/types/app";
 
 const AUDIO_EST_MS = 12_000;
 
@@ -27,9 +30,9 @@ export function useServerLinkProcessor({
   onProcessingComplete,
   onError,
   onStatusUpdate,
-  onStagesUpdate
+  onStagesUpdate,
 }: Props) {
-  const { setStep } = useStepper();
+  const {setStep} = useStepper();
   const [busy, setBusy] = useState(false);
   const patch = useStageUpdater(onStagesUpdate);
   const timer = useRef<NodeJS.Timeout | null>(null);
@@ -43,7 +46,11 @@ export function useServerLinkProcessor({
 
   /* ---------------------------------------------------------------- */
   const processLink = useCallback(
-    async (link: string, mode: TranscriptionMode) => {
+    async (
+      link: string,
+      mode: TranscriptionMode,
+      engine: TranscriptionEngine
+    ) => {
       setBusy(true);
       setStep?.("process");
       const modelDisplayName = TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode];
@@ -68,6 +75,8 @@ export function useServerLinkProcessor({
         },
       ]);
 
+      onStatusUpdate("Server is processing the link…");
+
       /* ---------------- fake progress while server extracts ------- */
       timer.current = setTimeout(() => {
         patch("audio", {
@@ -88,12 +97,12 @@ export function useServerLinkProcessor({
       }, AUDIO_EST_MS);
 
       onStatusUpdate("Server is processing the link…");
-      const res = await processVideoLinkAction(link, mode);
+      const res = await processVideoLinkAction(link, mode, engine);
       clearTimeout(timer.current!);
 
       if (!res.success || !res.data) {
-        patch("audio", { isIndeterminate: false });
-        patch("groq", { isIndeterminate: false });
+        patch("audio", {isIndeterminate: false});
+        patch("groq", {isIndeterminate: false});
         onError(res.error ?? "Failed to process link");
         setBusy(false);
         return;
@@ -127,5 +136,5 @@ export function useServerLinkProcessor({
     ]
   );
 
-  return { processLink, isProcessing: busy };
+  return {processLink, isProcessing: busy};
 }

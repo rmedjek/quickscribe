@@ -6,9 +6,6 @@ import {APP_STEPS} from "@/types/app";
 
 import PageLayout from "@/components/PageLayout";
 import InputSelectionView from "@/components/InputSelectionView";
-import ConfirmationView, {
-  TranscriptionMode,
-} from "@/components/ConfirmationView";
 import ProcessingView, {StageDisplayData} from "@/components/ProcessingView";
 import ResultsView from "@/components/ResultsView";
 import StyledButton from "@/components/StyledButton";
@@ -21,8 +18,13 @@ import {useServerLinkProcessor} from "./hooks/useServerLinkProcessor";
 import {useClientFileProcessor} from "./hooks/useClientFileProcessor";
 import {useServerFileUploadProcessor} from "./hooks/useServerFileUploadProcessor";
 
-import type {SelectedInputType} from "@/types/app";
+import type {
+  SelectedInputType,
+  TranscriptionEngine,
+  TranscriptionMode,
+} from "@/types/app";
 import {StepperProvider, useStepper} from "./contexts/StepperContext";
+import ConfirmationView from "./components/ConfirmationView";
 
 enum ViewState {
   SelectingInput,
@@ -180,6 +182,9 @@ function HomePageInner() {
 
   const [ffmpeg, setFfmpeg] = useState<FFmpeg | null>(null);
   const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
+  const [selectedEngine, setSelectedEngine] =
+    useState<TranscriptionEngine>("groq");
+
   const [currentOverallStatus, setCurrentOverallStatus] = useState("");
   const [processingUIStages, setProcessingUIStages] = useState<
     StageDisplayData[]
@@ -347,32 +352,52 @@ function HomePageInner() {
 
   const handleConfirmation = (
     processingPath: "client" | "server",
-    mode: TranscriptionMode
+    mode: TranscriptionMode,
+    engine: TranscriptionEngine
   ) => {
     setSelectedMode(mode);
+    setSelectedEngine(engine);
 
-    if (selectedInputType === "link" && submittedLink) {
-      setCurrentView(ViewState.ProcessingServer);
-      processServerLink(submittedLink, mode);
-    } else if (selectedFile && selectedInputType) {
-      const isAudio = selectedInputType === "audio";
-      if (processingPath === "client") {
-        // <<< Path for "Process in Browser"
-        setCurrentView(ViewState.ProcessingClient);
-        processClientFile(selectedFile, mode, isAudio);
-      } else {
-        // processingPath === "server"
-        setCurrentView(ViewState.ProcessingServer);
-        processServerUploadedFile(selectedFile, mode, isAudio); // NOT this for client path
+    if (engine === "assembly") {
+      if (selectedFile) {
+        console.log("Routing to AssemblyAI Server Processor...");
+        // Here you would call a new hook, e.g., processWithAssemblyAi(selectedFile);
+        // For now, let's put a placeholder error
+        handleError(
+          "Engine Selection",
+          "AssemblyAI processing hook not implemented yet."
+        );
+        return;
       }
-    } else {
-      console.error(
-        "Confirmation error: No valid input (file/link and type) found."
-      );
-      handleError(
-        "Confirmation Error",
-        "No valid input found for processing. Please try selecting your input again."
-      );
+      if (submittedLink) {
+        console.log("Routing to AssemblyAI Link Processor...");
+        setCurrentView(ViewState.ProcessingServer);
+        // We can use the existing server link processor but pass the engine to it
+        processServerLink(submittedLink, mode, selectedEngine);
+        return;
+      }
+    }
+
+    // Existing Groq Logic
+    if (engine === "groq") {
+      if (selectedInputType === "link" && submittedLink) {
+        setCurrentView(ViewState.ProcessingServer);
+        processServerLink(submittedLink, mode, "groq");
+      } else if (selectedFile && selectedInputType) {
+        const isAudio = selectedInputType === "audio";
+        if (processingPath === "client") {
+          setCurrentView(ViewState.ProcessingClient);
+          processClientFile(selectedFile, mode, isAudio);
+        } else {
+          setCurrentView(ViewState.ProcessingServer);
+          processServerUploadedFile(selectedFile, mode, isAudio);
+        }
+      } else {
+        handleError(
+          "Confirmation Error",
+          "No valid input found for processing."
+        );
+      }
     }
   };
 

@@ -174,8 +174,8 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
       <div className="text-center mb-8">
         <h1 className="text-4xl sm:text-5xl font-bold text-slate-900">
           QuickScribe{" "}
-          {/* Updated App Name from "Quick Transcribe" for consistency */}
         </h1>
+
         <p className="text-base text-slate-500 mt-2">Powered by Groq</p>
       </div>
 

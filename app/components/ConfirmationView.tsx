@@ -11,22 +11,28 @@ import {
   Shield,
   Music,
   Video,
+  Brain,
+  Users,
 } from "lucide-react";
-import {APP_STEPS} from "@/types/app";
+import {
+  APP_STEPS,
+  TranscriptionMode,
+  TranscriptionEngine,
+  SelectedInputType,
+} from "@/types/app";
 import StyledButton from "./StyledButton";
 import ProgressStepper from "./ProgressStepper";
-import {SelectedInputType} from "@/types/app";
 
 const MAX_CLIENT_SIZE_BYTES = 200 * 1024 * 1024; // 200MB example
-export type TranscriptionMode = "core" | "turbo";
 
 interface ConfirmationViewProps {
   file: File | null;
   link: string | null;
-  inputType: SelectedInputType | null; // NEW PROP to distinguish audio/video/link
+  inputType: SelectedInputType | null;
   onConfirm: (
     processingPath: "client" | "server",
-    mode: TranscriptionMode
+    mode: TranscriptionMode,
+    engine: TranscriptionEngine
   ) => void;
   onCancel: () => void;
 }
@@ -45,6 +51,8 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   const isLargeFile = isFileProvided && file.size > MAX_CLIENT_SIZE_BYTES;
 
   const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
+  const [selectedEngine, setSelectedEngine] =
+    useState<TranscriptionEngine>("groq");
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 Bytes";
@@ -111,8 +119,88 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
         )}
       </div>
 
+      {/* --- NEW: Transcription Engine Selection --- */}
+      <div className="mb-8">
+        <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3 text-center">
+          Transcription Engine
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+              selectedEngine === "groq"
+                ? "border-green-500 bg-green-50 dark:bg-green-900/30 dark:border-green-400 shadow-lg scale-105"
+                : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-500"
+            }`}
+            onClick={() => setSelectedEngine("groq")}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") setSelectedEngine("groq");
+            }}
+          >
+            <div className="flex items-center mb-1">
+              <Brain
+                size={20}
+                className={`mr-2 ${
+                  selectedEngine === "groq"
+                    ? "text-green-600"
+                    : "text-slate-500"
+                }`}
+              />
+              <h4 className="font-semibold text-slate-700 dark:text-slate-200">
+                Groq (Whisper)
+              </h4>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Extremely fast, high-quality transcription. Best for single
+              speakers.
+            </p>
+          </div>
+          <div
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+              selectedEngine === "assembly"
+                ? "border-purple-500 bg-purple-50 dark:bg-purple-900/30 dark:border-purple-400 shadow-lg scale-105"
+                : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-500"
+            }`}
+            onClick={() => setSelectedEngine("assembly")}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ")
+                setSelectedEngine("assembly");
+            }}
+          >
+            <div className="flex items-center mb-1">
+              <Users
+                size={20}
+                className={`mr-2 ${
+                  selectedEngine === "assembly"
+                    ? "text-purple-600"
+                    : "text-slate-500"
+                }`}
+              />
+              <h4 className="font-semibold text-slate-700 dark:text-slate-200">
+                AssemblyAI
+              </h4>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Provides speaker labels (diarization). Ideal for conversations.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* For files, AssemblyAI is server-only for now, so we hide client option if it's selected */}
+      {isFileProvided && selectedEngine === "assembly" && (
+        <StyledButton
+          onClick={() => onConfirm("server", selectedMode, selectedEngine)}
+          variant="primary" /* ... */
+        >
+          <Users size={20} className="mr-2" /> Transcribe with Speaker Labels
+          (Server)
+        </StyledButton>
+      )}
+
       {/* core/Turbo Toggle & Mode Cards (only if file or link is provided) */}
-      {(isFileProvided || isLinkProvided) && (
+      {(isFileProvided || isLinkProvided) && selectedEngine === "groq" && (
         <>
           {/* ... (core/Turbo toggle and Mode Cards remain the same) ... */}
           <div className="mb-6 flex items-center justify-center space-x-2">
@@ -235,12 +323,13 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
       {/* Case 1: Link is provided (always server processing) */}
       {isLinkProvided && (
         <StyledButton
-          onClick={() => onConfirm("server", selectedMode)}
+          onClick={() => onConfirm("server", selectedMode, selectedEngine)}
           variant="primary"
           size="lg"
           className="w-full bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
         >
-          Generate Transcripts from Link
+          Generate Transcripts from Link (using{" "}
+          {selectedEngine === "groq" ? "Groq" : "AssemblyAI"})
         </StyledButton>
       )}
 
@@ -263,7 +352,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
           <div className="space-y-3">
             {/* Server Processing Button */}
             <StyledButton
-              onClick={() => onConfirm("server", selectedMode)}
+              onClick={() => onConfirm("server", selectedMode, selectedEngine)}
               // For large files OR audio files, server is often preferred/safer.
               // Make server primary if large, or if it's audio (unless small audio where client is also fine).
               variant={
@@ -285,7 +374,9 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
             {/* Client Processing Button - show unless it's a large audio file where server is heavily pushed */}
             {!(isLargeFile && inputType === "audio") && (
               <StyledButton
-                onClick={() => onConfirm("client", selectedMode)}
+                onClick={() =>
+                  onConfirm("client", selectedMode, selectedEngine)
+                }
                 variant={
                   !isLargeFile && inputType !== "audio"
                     ? "primary"
