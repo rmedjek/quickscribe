@@ -221,3 +221,5 @@ export const AiResultCard: React.FC<AiResultCardProps> = ({
     </div>
   );
 };
+
+export type {AiResultItem};
