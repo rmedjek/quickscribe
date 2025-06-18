@@ -448,9 +448,33 @@ export default function ResultsView({
                       : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/50"
                   }`}
                 >
-                  {new Intl.DisplayNames(["en"], {type: "language"})
-                    .of(transcriptLanguage)
-                    ?.split(" ")[0] || transcriptLanguage.toUpperCase()}
+                  {(() => {
+                    // IIFE for cleaner conditional logic
+                    try {
+                      // Ensure transcriptLanguage is a non-empty string before calling .of()
+                      if (
+                        transcriptLanguage &&
+                        typeof transcriptLanguage === "string" &&
+                        transcriptLanguage.trim() !== ""
+                      ) {
+                        const displayName = new Intl.DisplayNames(["en"], {
+                          type: "language",
+                        }).of(transcriptLanguage);
+                        return (
+                          displayName?.split(" ")[0] ||
+                          transcriptLanguage.toUpperCase()
+                        );
+                      }
+                      return transcriptLanguage?.toUpperCase() || "Unknown"; // Fallback for empty or invalid
+                    } catch (e) {
+                      console.warn(
+                        "Error formatting language name:",
+                        transcriptLanguage,
+                        e
+                      );
+                      return transcriptLanguage?.toUpperCase() || "Lang"; // Further fallback
+                    }
+                  })()}
                 </button>
                 {transcriptLanguage !== "en" && (
                   <button

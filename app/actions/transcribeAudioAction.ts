@@ -78,7 +78,7 @@ export async function transcribeAudioAction(
       operationName: `GroqAudioTranscription-${audioBlob.name.substring(
         0,
         20
-      )}`, // Add some identifier
+      )}`,
       operation,
       maxRetries: 2, // e.g., 2 retries (total 3 attempts)
       initialBackoffMs: 2000, // Start with 2s backoff

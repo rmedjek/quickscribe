@@ -2,9 +2,9 @@
 // app/actions/transcribeWithAssemblyAiAction.ts
 "use server";
 
-import {AssemblyAI} from "assemblyai";
+import {AssemblyAI, TranscriptUtterance} from "assemblyai";
 import {generateSRT, generateVTT, Segment} from "../lib/caption-utils";
-import {DetailedTranscriptionResult} from "./transcribeAudioAction"; // Reusing this type
+import {DetailedTranscriptionResult} from "./transcribeAudioAction";
 import {retryWithBackoff} from "@/lib/api-utils";
 
 if (!process.env.ASSEMBLYAI_API_KEY) {
@@ -35,13 +35,10 @@ export async function transcribeWithAssemblyAiAction(
 
   try {
     const operation = async () => {
-      // AssemblyAI requires the audio data, not a direct File object from FormData in this context.
       const audioData = await audioBlob.arrayBuffer();
-
-      // The 'transcribe' method handles both uploading and polling for the result.
       return await assemblyClient.transcripts.transcribe({
-        audio: Buffer.from(audioData), // Pass the audio data
-        speaker_labels: true, // This is the key feature we want
+        audio: Buffer.from(audioData),
+        speaker_labels: true,
       });
     };
 
@@ -51,13 +48,43 @@ export async function transcribeWithAssemblyAiAction(
         20
       )}`,
       operation,
-      maxRetries: 1, // AssemblyAI polling can be long, so limit retries on hard failures.
+      maxRetries: 1,
       initialBackoffMs: 3000,
     });
 
-    if (transcript.status === "error") {
+    console.log(
+      "[AssemblyAI Action] Full transcript object status:",
+      transcript.status
+    );
+    if (transcript.status === "completed") {
+      console.log(
+        "[AssemblyAI Action] Detected Language Code from AssemblyAI:",
+        transcript.language_code
+      );
+      console.log(
+        "[AssemblyAI Action] Full transcript text (from AssemblyAI - raw):",
+        transcript.text?.substring(0, 300) + "..."
+      ); // This is raw text
+      if (transcript.utterances && transcript.utterances.length > 0) {
+        console.log(
+          `[AssemblyAI Action] Number of utterances: ${transcript.utterances.length}`
+        );
+        transcript.utterances.slice(0, 3).forEach((utt, idx) => {
+          // Use TranscriptUtterance type if possible
+          console.log(
+            `[AssemblyAI Action] Utterance ${idx} speaker: ${
+              utt.speaker
+            }, text: "${utt.text.substring(0, 30)}..."`
+          );
+        });
+      } else {
+        console.log(
+          "[AssemblyAI Action] No utterances found in AssemblyAI response."
+        );
+      }
+    } else if (transcript.status === "error") {
       console.error(
-        "[AssemblyAI Action] Transcription job failed with error:",
+        "[AssemblyAI Action] Transcription job failed:",
         transcript.error
       );
       return {
@@ -66,41 +93,54 @@ export async function transcribeWithAssemblyAiAction(
       };
     }
 
-    if (!transcript.utterances || !transcript.text) {
+    // Ensure utterances are present for further processing
+    if (!transcript.utterances || transcript.utterances.length === 0) {
       console.error(
-        "[AssemblyAI Action] AssemblyAI response did not contain expected fields (utterances, text)."
+        "[AssemblyAI Action] No utterances available to process speaker labels."
       );
+      // Fallback to using the raw text if no utterances, though it won't have speaker labels
       return {
-        success: false,
-        error:
-          "Transcription failed: Unexpected response structure from AssemblyAI.",
+        success: true, // Or false if this is considered a failure of diarization
+        data: {
+          text:
+            transcript.text ||
+            "Transcription complete but no speaker segments found.",
+          language: transcript.language_code,
+          duration: transcript.audio_duration ?? undefined,
+          segments: [],
+          srtContent: "",
+          vttContent: "",
+          extractedAudioSizeBytes: audioBlob.size,
+        },
       };
     }
 
-    console.log("[AssemblyAI Action] Transcription successful.");
-
-    // Convert AssemblyAI's 'utterances' into our standard 'Segment' format
     const typedSegments: Segment[] = transcript.utterances.map(
-      (utterance, index) => ({
+      (utterance: TranscriptUtterance, index: number) => ({
         id: index,
-        start: utterance.start / 1000, // AssemblyAI uses milliseconds
+        start: utterance.start / 1000,
         end: utterance.end / 1000,
-        text: utterance.text,
-        speaker: utterance.speaker, // Speaker label, e.g., 'A', 'B'
+        text: utterance.text || "",
+        speaker: utterance.speaker || undefined, // Speaker will be 'A', 'B', etc. or undefined
       })
     );
 
-    // Reconstruct the full text with speaker labels for display
+    // Reconstruct the full text WITH speaker labels
     const fullTextWithSpeakers = typedSegments
-      .map((s) => `${s.speaker}: ${s.text}`)
+      .map((s) => (s.speaker ? `${s.speaker}: ${s.text}` : s.text)) // Prepend speaker if available
       .join("\n");
 
-    const srt = generateSRT(typedSegments);
+    console.log(
+      "[AssemblyAI Action] Constructed fullTextWithSpeakers (first 500 chars):",
+      fullTextWithSpeakers.substring(0, 500)
+    );
+
+    const srt = generateSRT(typedSegments); // These utils already handle speaker field
     const vtt = generateVTT(typedSegments);
 
     const result: DetailedTranscriptionResult = {
-      text: fullTextWithSpeakers,
-      language: transcript.language_code, // e.g., "en_us"
+      text: fullTextWithSpeakers, // *** USE THE TEXT WITH SPEAKERS ***
+      language: transcript.language_code,
       duration: transcript.audio_duration ?? undefined,
       segments: typedSegments,
       srtContent: srt,
@@ -117,7 +157,6 @@ export async function transcribeWithAssemblyAiAction(
     const userFriendlyError = `An unexpected error occurred during transcription with AssemblyAI: ${
       error.message || String(error)
     }`;
-    // Add more specific error handling if needed, similar to the Groq action
     return {success: false, error: userFriendlyError};
   }
 }

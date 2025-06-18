@@ -37,7 +37,12 @@ export async function processVideoLinkAction(
   error?: string;
 }> {
   console.log(
-    `[VideoLinkAction] Processing URL: ${videoUrl} with mode: ${mode}`
+    "<<<<< processVideoLinkAction ENTRY - Engine received:",
+    engine,
+    "Mode:",
+    mode,
+    "URL:",
+    videoUrl
   );
 
   // --- NEW SERVER-SIDE VALIDATION ---
@@ -234,7 +239,7 @@ export async function processVideoLinkAction(
 
     const audioFileBuffer = await fsPromises.readFile(tempOpusAudioPath);
 
-    if (audioFileBuffer.length > GROQ_AUDIO_LIMIT_BYTES) {
+    if (audioFileBuffer.length > GROQ_AUDIO_LIMIT_BYTES && engine === "groq") {
       const fileSizeMB = (audioFileBuffer.length / (1024 * 1024)).toFixed(2);
       const limitMB = (GROQ_AUDIO_LIMIT_BYTES / (1024 * 1024)).toFixed(2);
       const errorMessage = `Extracted audio (${fileSizeMB} MB) exceeds the transcription service limit of ${limitMB} MB. Please use a shorter video.`;
@@ -254,8 +259,9 @@ export async function processVideoLinkAction(
     formData.append("audioBlob", audioBlobForGroq, opusAudioFileName);
 
     console.log(
-      "[ServerAction] Calling transcribeAudioAction with server-extracted Opus audio..."
+      `[VideoLinkAction] Submitting extracted audio to transcription engine: "${engine}"`
     );
+
     if (engine === "assembly") {
       return await transcribeWithAssemblyAiAction(formData);
     } else {

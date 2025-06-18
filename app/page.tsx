@@ -197,12 +197,23 @@ function HomePageInner() {
   const handleProcessingComplete = useCallback(
     (data: DetailedTranscriptionResult) => {
       setTranscriptionData(data);
-      if (data.language) {
-        setTranscriptLanguage(data.language.split("-")[0]);
+      if (data.language && data.language.trim() !== "") {
+        const baseLang = data.language.split("-")[0].toLowerCase();
+        // Ensure it's a valid 2-letter code, otherwise default
+        if (/^[a-z]{2}$/.test(baseLang)) {
+          setTranscriptLanguage(baseLang);
+        } else {
+          console.warn(
+            `Received potentially invalid language code: ${data.language}, defaulting to 'en'`
+          );
+          setTranscriptLanguage("en");
+        }
+      } else {
+        setTranscriptLanguage("en"); // Default if language is missing or empty
       }
       setCurrentOverallStatus("Transcription complete!");
       setCurrentView(ViewState.ShowingResults);
-      setStep("transcribe"); // Ensure step is updated
+      setStep("transcribe");
     },
     [setStep]
   );
@@ -361,8 +372,6 @@ function HomePageInner() {
     if (engine === "assembly") {
       if (selectedFile) {
         console.log("Routing to AssemblyAI Server Processor...");
-        // Here you would call a new hook, e.g., processWithAssemblyAi(selectedFile);
-        // For now, let's put a placeholder error
         handleError(
           "Engine Selection",
           "AssemblyAI processing hook not implemented yet."
@@ -370,10 +379,9 @@ function HomePageInner() {
         return;
       }
       if (submittedLink) {
-        console.log("Routing to AssemblyAI Link Processor...");
-        setCurrentView(ViewState.ProcessingServer);
-        // We can use the existing server link processor but pass the engine to it
-        processServerLink(submittedLink, mode, selectedEngine);
+        console.log("[Page.tsx] Routing to AssemblyAI Link Processor...");
+        setCurrentView(ViewState.ProcessingServer); // This will make the UI show processing
+        processServerLink(submittedLink, mode, engine); // engine IS "assembly" here
         return;
       }
     }

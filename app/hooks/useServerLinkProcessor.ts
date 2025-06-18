@@ -15,7 +15,6 @@ import {
 
 const AUDIO_EST_MS = 12_000;
 
-/* ------------ props -------------------------------------------- */
 interface Props {
   onProcessingComplete: (d: DetailedTranscriptionResult) => void;
   onError: (msg: string) => void;
@@ -25,7 +24,6 @@ interface Props {
   ) => void;
 }
 
-/* ================================================================= */
 export function useServerLinkProcessor({
   onProcessingComplete,
   onError,
@@ -44,29 +42,46 @@ export function useServerLinkProcessor({
     []
   );
 
-  /* ---------------------------------------------------------------- */
   const processLink = useCallback(
+    // Ensure this signature matches the call from page.tsx
     async (
       link: string,
       mode: TranscriptionMode,
       engine: TranscriptionEngine
     ) => {
+      console.log("====================================================");
+      console.log("      REBUILT useServerLinkProcessor - processLink     ");
+      console.log("====================================================");
+      console.log("Received Link:", link);
+      console.log("Received Mode:", mode);
+      console.log("Received Engine:", engine); // <<< VERIFY THIS STILL SHOWS "assembly"
+      console.log("====================================================");
+
       setBusy(true);
       setStep?.("process");
-      const modelDisplayName = TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode];
+
+      const engineDisplayName =
+        engine === "assembly" ? "AssemblyAI" : "Groq (Whisper)";
+      const modelForDisplay =
+        engine === "groq"
+          ? TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode]
+          : // For AssemblyAI, the "mode" (core/turbo) isn't directly applicable to its model choice.
+            // We can show a generic label or eventually derive it from AssemblyAI's response if needed.
+            "Diarization Model";
 
       onStagesUpdate([
         {
-          name: "audio",
-          label: "Downloading & Processing Audio",
+          name: "link_prep", // Changed stage name for clarity
+          label: `Server: Downloading & Preparing Audio for ${engineDisplayName}`,
           progress: 0,
           isActive: true,
           isComplete: false,
           isIndeterminate: true,
+          subText: "This may take some time for longer videos...",
         },
         {
-          name: "groq",
-          label: "AI Transcribing…",
+          name: "link_transcribe",
+          label: `AI Transcribing with ${engineDisplayName}`,
           progress: 0,
           isActive: false,
           isComplete: false,
@@ -75,63 +90,71 @@ export function useServerLinkProcessor({
         },
       ]);
 
-      onStatusUpdate("Server is processing the link…");
+      onStatusUpdate(
+        `Server is processing the link using ${engineDisplayName}...`
+      );
 
-      /* ---------------- fake progress while server extracts ------- */
+      // Fake progress timer - can be adjusted or made smarter
+      // For AssemblyAI, the processing time can be much longer than Groq's.
+      // This timer might need to be different or disabled based on the engine.
+      const estimateMs =
+        engine === "assembly" ? AUDIO_EST_MS * 3 : AUDIO_EST_MS; // Longer estimate for AssemblyAI
       timer.current = setTimeout(() => {
-        patch("audio", {
+        patch("link_prep", {
           isIndeterminate: false,
           progress: 1,
           isActive: false,
           isComplete: true,
+          label: `Server: Audio Ready for ${engineDisplayName}`,
         });
-
-        patch("groq", {
+        patch("link_transcribe", {
           isActive: true,
           isIndeterminate: true,
-          subText: `Processing using Groq's ${modelDisplayName} model`,
+          subText: `Using ${modelForDisplay}...`,
         });
-
-        /* 🔔 stepper advance */
         setStep?.("transcribe");
-      }, AUDIO_EST_MS);
+      }, estimateMs);
 
-      onStatusUpdate("Server is processing the link…");
+      // THE CRUCIAL LINE: Pass the `engine` parameter to processVideoLinkAction
       const res = await processVideoLinkAction(link, mode, engine);
-      clearTimeout(timer.current!);
+
+      if (timer.current) clearTimeout(timer.current);
 
       if (!res.success || !res.data) {
-        patch("audio", {isIndeterminate: false});
-        patch("groq", {isIndeterminate: false});
-        onError(res.error ?? "Failed to process link");
+        patch("link_prep", {
+          isIndeterminate: false,
+          isActive: false,
+          isComplete: true,
+        }); // Mark prep as done
+        patch("link_transcribe", {
+          isActive: false,
+          isIndeterminate: false,
+          label: `AI Transcription Failed (${engineDisplayName})`,
+        });
+        onError(
+          res.error ?? `Failed to process link with ${engineDisplayName}`
+        );
         setBusy(false);
         return;
       }
 
-      /* ---------------- mark both bars complete ------------------- */
-      patch("audio", {
+      patch("link_prep", {progress: 1, isActive: false, isComplete: true});
+      patch("link_transcribe", {
         isIndeterminate: false,
         progress: 1,
         isActive: false,
         isComplete: true,
+        subText: `Processed with ${modelForDisplay}`,
       });
-      patch("groq", {
-        isIndeterminate: false,
-        progress: 1,
-        isActive: false,
-        isComplete: true,
-        subText: `Processed with Groq's ${modelDisplayName} model`,
-      });
-
       onProcessingComplete(res.data);
       setBusy(false);
     },
     [
-      patch,
       onError,
       onProcessingComplete,
       onStatusUpdate,
       onStagesUpdate,
+      patch,
       setStep,
     ]
   );
