@@ -17,6 +17,7 @@ import {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
 import {useServerLinkProcessor} from "./hooks/useServerLinkProcessor";
 import {useClientFileProcessor} from "./hooks/useClientFileProcessor";
 import {useServerFileUploadProcessor} from "./hooks/useServerFileUploadProcessor";
+import {useAssemblyAIFileUploadProcessor} from "./hooks/useAssemblyAIFileUploadProcessor";
 
 import type {
   SelectedInputType,
@@ -182,8 +183,8 @@ function HomePageInner() {
 
   const [ffmpeg, setFfmpeg] = useState<FFmpeg | null>(null);
   const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
-  const [selectedEngine, setSelectedEngine] =
-    useState<TranscriptionEngine>("groq");
+  //  const [selectedEngine, setSelectedEngine] =
+  //   useState<TranscriptionEngine>("groq");
 
   const [currentOverallStatus, setCurrentOverallStatus] = useState("");
   const [processingUIStages, setProcessingUIStages] = useState<
@@ -193,6 +194,8 @@ function HomePageInner() {
   const [transcriptionData, setTranscriptionData] =
     useState<DetailedTranscriptionResult | null>(null);
   const [transcriptLanguage, setTranscriptLanguage] = useState<string>("en");
+  const [selectedEngineForDisplay, setSelectedEngineForDisplay] =
+    useState<TranscriptionEngine>("groq");
 
   const handleProcessingComplete = useCallback(
     (data: DetailedTranscriptionResult) => {
@@ -202,14 +205,18 @@ function HomePageInner() {
         // Ensure it's a valid 2-letter code, otherwise default
         if (/^[a-z]{2}$/.test(baseLang)) {
           setTranscriptLanguage(baseLang);
+          console.log(`[Page.tsx] Set transcriptLanguage to: ${baseLang}`); // Add this log
         } else {
           console.warn(
-            `Received potentially invalid language code: ${data.language}, defaulting to 'en'`
+            `Received potentially invalid language code: "${data.language}", defaulting to 'en'`
           );
           setTranscriptLanguage("en");
         }
       } else {
         setTranscriptLanguage("en"); // Default if language is missing or empty
+        console.log(
+          `[Page.tsx] Transcript language missing, defaulting to 'en'`
+        );
       }
       setCurrentOverallStatus("Transcription complete!");
       setCurrentView(ViewState.ShowingResults);
@@ -245,6 +252,14 @@ function HomePageInner() {
     },
     []
   );
+
+  const {processFileWithAssemblyAI} = useAssemblyAIFileUploadProcessor({
+    onProcessingComplete: handleProcessingComplete,
+    onError: (m, f, sz) => handleError("AssemblyAI File Processing", m, f, sz),
+    onStatusUpdate: handleStatusUpdate,
+    onStagesUpdate: handleStagesUpdate,
+    // setStep is handled by useStepper, so no need for onStepChange directly here
+  });
 
   /* processing hooks ----------------------------------------------------- */
   const {processFile: processClientFile} = useClientFileProcessor({
@@ -367,45 +382,49 @@ function HomePageInner() {
     engine: TranscriptionEngine
   ) => {
     setSelectedMode(mode);
-    setSelectedEngine(engine);
+    setSelectedEngineForDisplay(engine);
+
+    setStep("process"); // Set step via context
 
     if (engine === "assembly") {
-      if (selectedFile) {
-        console.log("Routing to AssemblyAI Server Processor...");
-        handleError(
-          "Engine Selection",
-          "AssemblyAI processing hook not implemented yet."
-        );
+      if (selectedFile && selectedInputType) {
+        console.log("[Page.tsx] Routing to AssemblyAI File Processor...");
+        setCurrentView(ViewState.ProcessingServer);
+        const isAudio = selectedInputType === "audio";
+        processFileWithAssemblyAI(selectedFile, isAudio);
         return;
       }
       if (submittedLink) {
         console.log("[Page.tsx] Routing to AssemblyAI Link Processor...");
-        setCurrentView(ViewState.ProcessingServer); // This will make the UI show processing
-        processServerLink(submittedLink, mode, engine); // engine IS "assembly" here
+        setCurrentView(ViewState.ProcessingServer);
+        processServerLink(submittedLink, mode, engine);
         return;
       }
+      handleError(
+        "Input Error",
+        "No file or link provided for AssemblyAI processing."
+      );
+      return;
     }
 
-    // Existing Groq Logic
-    if (engine === "groq") {
-      if (selectedInputType === "link" && submittedLink) {
-        setCurrentView(ViewState.ProcessingServer);
-        processServerLink(submittedLink, mode, "groq");
-      } else if (selectedFile && selectedInputType) {
-        const isAudio = selectedInputType === "audio";
-        if (processingPath === "client") {
-          setCurrentView(ViewState.ProcessingClient);
-          processClientFile(selectedFile, mode, isAudio);
-        } else {
-          setCurrentView(ViewState.ProcessingServer);
-          processServerUploadedFile(selectedFile, mode, isAudio);
-        }
+    // Groq Logic (engine === 'groq')
+    if (selectedInputType === "link" && submittedLink) {
+      setCurrentView(ViewState.ProcessingServer);
+      processServerLink(submittedLink, mode, "groq");
+    } else if (selectedFile && selectedInputType) {
+      const isAudio = selectedInputType === "audio";
+      if (processingPath === "client") {
+        setCurrentView(ViewState.ProcessingClient);
+        processClientFile(selectedFile, mode, isAudio);
       } else {
-        handleError(
-          "Confirmation Error",
-          "No valid input found for processing."
-        );
+        setCurrentView(ViewState.ProcessingServer);
+        processServerUploadedFile(selectedFile, mode, isAudio);
       }
+    } else {
+      handleError(
+        "Confirmation Error",
+        "No valid input found for Groq processing."
+      );
     }
   };
 
@@ -446,6 +465,7 @@ function HomePageInner() {
               transcriptionData={transcriptionData}
               transcriptLanguage={transcriptLanguage}
               mode={selectedMode}
+              engineUsed={selectedEngineForDisplay}
               onRestart={resetToStart}
             />
           )

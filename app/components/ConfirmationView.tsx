@@ -1,7 +1,7 @@
 // app/components/ConfirmationView.tsx
 "use client";
 
-import React, {useState} from "react"; // Removed useEffect as it wasn't used
+import React, {useState} from "react";
 import {
   FileText,
   AlertTriangle,
@@ -23,7 +23,7 @@ import {
 import StyledButton from "./StyledButton";
 import ProgressStepper from "./ProgressStepper";
 
-const MAX_CLIENT_SIZE_BYTES = 200 * 1024 * 1024; // 200MB example
+const MAX_CLIENT_SIZE_BYTES = 200 * 1024 * 1024;
 
 interface ConfirmationViewProps {
   file: File | null;
@@ -37,17 +37,15 @@ interface ConfirmationViewProps {
   onCancel: () => void;
 }
 
-// Step definitions used by the shared progress stepper
-
 const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   file,
   link,
-  inputType, // Destructure and use the new prop
+  inputType,
   onConfirm,
   onCancel,
 }) => {
   const isFileProvided = !!file;
-  const isLinkProvided = !!link && !file; // This logic is fine
+  const isLinkProvided = !!link && !file;
   const isLargeFile = isFileProvided && file.size > MAX_CLIENT_SIZE_BYTES;
 
   const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
@@ -67,7 +65,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
     if (isFileProvided) {
       if (inputType === "audio") return "Audio File";
       if (inputType === "video") return "Video File";
-      return "File"; // Fallback
+      return "File";
     }
     return "Input";
   };
@@ -87,14 +85,14 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   return (
     <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700 dark:text-slate-200">
       <div className="text-center mb-6">
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">
+        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-50">
           QuickScribe
         </h1>
-        <p className="text-sm text-slate-500 mt-1">Powered by Groq</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          Powered by Groq & AssemblyAI
+        </p>
       </div>
-
       <ProgressStepper steps={APP_STEPS} currentStepId="configure" />
-
       <div className="mb-6 p-4 border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm">
         <h3 className="text-base font-semibold mb-2 text-slate-700 dark:text-slate-200 flex items-center">
           {getInputIcon()} Selected {getInputTypeDisplayName()}:
@@ -119,96 +117,143 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
         )}
       </div>
 
-      {/* --- NEW: Transcription Engine Selection --- */}
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3 text-center">
-          Transcription Engine
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div
-            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-              selectedEngine === "groq"
-                ? "border-green-500 bg-green-50 dark:bg-green-900/30 dark:border-green-400 shadow-lg scale-105"
-                : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-500"
-            }`}
-            onClick={() => setSelectedEngine("groq")}
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") setSelectedEngine("groq");
-            }}
-          >
-            <div className="flex items-center mb-1">
-              <Brain
-                size={20}
-                className={`mr-2 ${
+      {/* --- Transcription Engine Selection --- */}
+      {(isFileProvided || isLinkProvided) && (
+        <>
+          <div className="mb-6 flex items-center justify-center space-x-2">
+            <span
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
+                selectedEngine === "groq"
+                  ? "bg-sky-500 text-white shadow-md"
+                  : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+              }`}
+              onClick={() => setSelectedEngine("groq")}
+            >
+              Groq
+            </span>
+            <div
+              className={`w-14 h-7 flex items-center rounded-full p-1 cursor-pointer transition-colors ease-in-out duration-300 ${
+                selectedEngine === "assembly" ? "bg-orange-500" : "bg-sky-500"
+              }`}
+              onClick={() =>
+                setSelectedEngine((prev) =>
+                  prev === "groq" ? "assembly" : "groq"
+                )
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelectedEngine((prev) =>
+                    prev === "groq" ? "assembly" : "groq"
+                  );
+                }
+              }}
+              role="switch"
+              aria-checked={selectedEngine === "assembly"}
+              tabIndex={0}
+            >
+              <div
+                className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${
+                  selectedEngine === "assembly" ? "translate-x-7" : ""
+                }`}
+              ></div>
+            </div>
+            <span
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
+                selectedEngine === "assembly"
+                  ? "bg-orange-500 text-white shadow-md"
+                  : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+              }`}
+              onClick={() => setSelectedEngine("assembly")}
+            >
+              Assembly
+            </span>
+          </div>
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3 text-center">
+              Choose Transcription Engine
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div
+                className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   selectedEngine === "groq"
-                    ? "text-green-600"
-                    : "text-slate-500"
+                    ? "border-green-500 bg-green-50 dark:bg-green-900/30 dark:border-green-400 shadow-lg scale-105"
+                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-500"
                 }`}
-              />
-              <h4 className="font-semibold text-slate-700 dark:text-slate-200">
-                Groq (Whisper)
-              </h4>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Extremely fast, high-quality transcription. Best for single
-              speakers.
-            </p>
-          </div>
-          <div
-            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-              selectedEngine === "assembly"
-                ? "border-purple-500 bg-purple-50 dark:bg-purple-900/30 dark:border-purple-400 shadow-lg scale-105"
-                : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-500"
-            }`}
-            onClick={() => setSelectedEngine("assembly")}
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ")
-                setSelectedEngine("assembly");
-            }}
-          >
-            <div className="flex items-center mb-1">
-              <Users
-                size={20}
-                className={`mr-2 ${
+                onClick={() => setSelectedEngine("groq")}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ")
+                    setSelectedEngine("groq");
+                }}
+                role="radio"
+                aria-checked={selectedEngine === "groq"}
+              >
+                <div className="flex items-center mb-1">
+                  <Brain
+                    size={20}
+                    className={`mr-2 ${
+                      selectedEngine === "groq"
+                        ? "text-green-600"
+                        : "text-slate-500"
+                    }`}
+                  />
+                  <h4 className="font-semibold text-slate-700 dark:text-slate-200">
+                    Groq (Whisper)
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Fast, high-quality. Best for single speakers or when speaker
+                  labels aren&apos;t needed.
+                </p>
+              </div>
+              <div
+                className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   selectedEngine === "assembly"
-                    ? "text-purple-600"
-                    : "text-slate-500"
+                    ? "border-purple-500 bg-purple-50 dark:bg-purple-900/30 dark:border-purple-400 shadow-lg scale-105"
+                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-500"
                 }`}
-              />
-              <h4 className="font-semibold text-slate-700 dark:text-slate-200">
-                AssemblyAI
-              </h4>
+                onClick={() => setSelectedEngine("assembly")}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ")
+                    setSelectedEngine("assembly");
+                }}
+                role="radio"
+                aria-checked={selectedEngine === "assembly"}
+              >
+                <div className="flex items-center mb-1">
+                  <Users
+                    size={20}
+                    className={`mr-2 ${
+                      selectedEngine === "assembly"
+                        ? "text-purple-600"
+                        : "text-slate-500"
+                    }`}
+                  />
+                  <h4 className="font-semibold text-slate-700 dark:text-slate-200">
+                    AssemblyAI
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Provides speaker labels (diarization). Ideal for
+                  conversations.
+                </p>
+              </div>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Provides speaker labels (diarization). Ideal for conversations.
-            </p>
           </div>
-        </div>
-      </div>
-
-      {/* For files, AssemblyAI is server-only for now, so we hide client option if it's selected */}
-      {isFileProvided && selectedEngine === "assembly" && (
-        <StyledButton
-          onClick={() => onConfirm("server", selectedMode, selectedEngine)}
-          variant="primary" /* ... */
-        >
-          <Users size={20} className="mr-2" /> Transcribe with Speaker Labels
-          (Server)
-        </StyledButton>
+        </>
       )}
 
-      {/* core/Turbo Toggle & Mode Cards (only if file or link is provided) */}
+      {/* --- Core/Turbo Mode Selection (ONLY for Groq Engine) --- */}
       {(isFileProvided || isLinkProvided) && selectedEngine === "groq" && (
         <>
-          {/* ... (core/Turbo toggle and Mode Cards remain the same) ... */}
           <div className="mb-6 flex items-center justify-center space-x-2">
             <span
               className={`px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
                 selectedMode === "core"
                   ? "bg-sky-500 text-white shadow-md"
-                  : "text-slate-500 hover:bg-slate-100"
+                  : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
               }`}
               onClick={() => setSelectedMode("core")}
             >
@@ -219,12 +264,14 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                 selectedMode === "turbo" ? "bg-orange-500" : "bg-sky-500"
               }`}
               onClick={() =>
-                setSelectedMode(selectedMode === "core" ? "turbo" : "core")
+                setSelectedMode((prev) => (prev === "core" ? "turbo" : "core"))
               }
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setSelectedMode(selectedMode === "core" ? "turbo" : "core");
+                  setSelectedMode((prev) =>
+                    prev === "core" ? "turbo" : "core"
+                  );
                 }
               }}
               role="switch"
@@ -241,31 +288,28 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
               className={`px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
                 selectedMode === "turbo"
                   ? "bg-orange-500 text-white shadow-md"
-                  : "text-slate-500 hover:bg-slate-100"
+                  : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
               }`}
               onClick={() => setSelectedMode("turbo")}
             >
               Turbo
             </span>
           </div>
-
           <div className="mb-8">
-            <h3 className="text-lg font-semibold text-slate-800 mb-3 text-center">
-              Transcription Modes
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3 text-center">
+              Transcription Quality
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div
                 className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   selectedMode === "core"
-                    ? "border-sky-500 bg-sky-50 shadow-lg scale-105"
-                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300"
+                    ? "border-sky-500 bg-sky-50 dark:bg-sky-900/30 dark:border-sky-400 shadow-lg scale-105"
+                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-500"
                 }`}
                 onClick={() => setSelectedMode("core")}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
+                  if (e.key === "Enter" || e.key === " ")
                     setSelectedMode("core");
-                  }
                 }}
                 role="radio"
                 aria-checked={selectedMode === "core"}
@@ -284,17 +328,25 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                     Core Mode
                   </h4>
                 </div>
-                <p className="text-xs text-slate-500">
-                  Efficient & fast with Whisper-large. Good for most cases.
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Reliable & fast with Whisper Large v3. Great for all
+                  languages.
                 </p>
               </div>
               <div
                 className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   selectedMode === "turbo"
-                    ? "border-orange-500 bg-orange-50 shadow-lg scale-105"
-                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300"
+                    ? "border-orange-500 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-400 shadow-lg scale-105"
+                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-500"
                 }`}
                 onClick={() => setSelectedMode("turbo")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ")
+                    setSelectedMode("turbo");
+                }}
+                role="radio"
+                aria-checked={selectedMode === "turbo"}
+                tabIndex={0}
               >
                 <div className="flex items-center mb-1">
                   <Zap
@@ -309,9 +361,8 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                     Turbo Mode
                   </h4>
                 </div>
-                <p className="text-xs text-slate-500">
-                  Highest accuracy with Whisper Large v3 Turbo. Best for
-                  critical quality.
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Potentially faster, high-accuracy model (if configured).
                 </p>
               </div>
             </div>
@@ -320,103 +371,123 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
       )}
 
       {/* --- Action Buttons --- */}
-      {/* Case 1: Link is provided (always server processing) */}
-      {isLinkProvided && (
-        <StyledButton
-          onClick={() => onConfirm("server", selectedMode, selectedEngine)}
-          variant="primary"
-          size="lg"
-          className="w-full bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
-        >
-          Generate Transcripts from Link (using{" "}
-          {selectedEngine === "groq" ? "Groq" : "AssemblyAI"})
-        </StyledButton>
-      )}
-
-      {/* Case 2: File is provided */}
-      {isFileProvided && (
-        <>
-          {isLargeFile && (
-            <div className="mb-4 p-3 border border-amber-300 rounded-lg bg-amber-50 text-amber-600 text-xs flex items-center">
-              <AlertTriangle
-                size={18}
-                className="text-amber-500 mr-2 flex-shrink-0"
-              />
-              <span>
-                Large file ({file ? formatFileSize(file.size) : "N/A"}). Server
-                processing is recommended.
-              </span>
-            </div>
-          )}
-
-          <div className="space-y-3">
-            {/* Server Processing Button */}
-            <StyledButton
-              onClick={() => onConfirm("server", selectedMode, selectedEngine)}
-              // For large files OR audio files, server is often preferred/safer.
-              // Make server primary if large, or if it's audio (unless small audio where client is also fine).
-              variant={
-                isLargeFile || inputType === "audio" ? "primary" : "secondary"
-              }
-              size="lg"
-              className={`w-full group ${
-                isLargeFile || inputType === "audio"
-                  ? "bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
-                  : ""
-              }`}
-            >
-              <Server size={20} className="mr-2" />
-              Process on Server
-              {isLargeFile && " (Recommended)"}
-              {inputType === "audio" && !isLargeFile && " (Audio File)"}
-            </StyledButton>
-
-            {/* Client Processing Button - show unless it's a large audio file where server is heavily pushed */}
-            {!(isLargeFile && inputType === "audio") && (
-              <StyledButton
-                onClick={() =>
-                  onConfirm("client", selectedMode, selectedEngine)
-                }
-                variant={
-                  !isLargeFile && inputType !== "audio"
-                    ? "primary"
-                    : "secondary"
-                } // Primary if small video. Secondary otherwise.
-                size="lg"
-                className="w-full group"
-              >
-                <CloudCog size={20} className="mr-2" />
-                Process in Browser
-                {isLargeFile &&
-                  inputType === "video" &&
-                  " (May be Slow for Large Video)"}
-                {!isLargeFile && inputType === "audio" && " (Audio File)"}
-              </StyledButton>
+      <div className="mt-6 space-y-3">
+        {" "}
+        {/* Added mt-6 for spacing */}
+        {/* Case 1: Link is provided */}
+        {isLinkProvided && (
+          <StyledButton
+            onClick={() => onConfirm("server", selectedMode, selectedEngine)}
+            variant="primary"
+            size="lg"
+            className="w-full bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
+          >
+            Transcribe Link with{" "}
+            {selectedEngine === "groq"
+              ? `Groq (${selectedMode === "core" ? "Core" : "Turbo"})`
+              : "AssemblyAI"}
+          </StyledButton>
+        )}
+        {/* Case 2: File is provided */}
+        {isFileProvided && (
+          <>
+            {/* --- AssemblyAI File Processing --- */}
+            {selectedEngine === "assembly" && (
+              <>
+                {isLargeFile && (
+                  <div className="mb-4 p-3 border border-amber-300 rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-600 text-xs flex items-center">
+                    <AlertTriangle
+                      size={18}
+                      className="text-amber-500 dark:text-amber-400 mr-2 flex-shrink-0"
+                    />
+                    <span>
+                      Note: This is a large file (
+                      {file ? formatFileSize(file.size) : "N/A"}).
+                    </span>
+                  </div>
+                )}
+                <StyledButton
+                  onClick={() => onConfirm("server", "core", "assembly")} // Mode is 'core' by default for AssemblyAI
+                  variant="primary"
+                  size="lg"
+                  className="w-full bg-purple-600 hover:bg-purple-700 focus-visible:ring-purple-400"
+                >
+                  <Users size={20} className="mr-2" />
+                  Transcribe with Speaker Labels (AssemblyAI)
+                </StyledButton>
+                <p className="text-xs mt-2 text-slate-500 dark:text-slate-400 text-center">
+                  AssemblyAI processing always occurs on the server. Your file
+                  will be uploaded securely.
+                </p>
+              </>
             )}
-          </div>
 
-          {isLargeFile && (
-            <p className="text-xs mt-3 text-slate-500 text-center">
-              Server processing is faster and more reliable for large files.
-              Your file is uploaded securely and deleted after processing.
-            </p>
-          )}
-          {!isLargeFile && inputType === "audio" && (
-            <p className="text-xs mt-3 text-slate-500 text-center">
-              For audio files, browser processing sends the file directly for
-              transcription (may convert to Opus if needed).
-            </p>
-          )}
-        </>
-      )}
+            {/* --- Groq File Processing Buttons --- */}
+            {selectedEngine === "groq" && (
+              <>
+                {isLargeFile && (
+                  <div className="mb-4 p-3 border border-amber-300 rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-600 text-xs flex items-center">
+                    <AlertTriangle
+                      size={18}
+                      className="text-amber-500 dark:text-amber-400 mr-2 flex-shrink-0"
+                    />
+                    <span>
+                      Large file ({file ? formatFileSize(file.size) : "N/A"}).
+                      Server processing is recommended for Groq.
+                    </span>
+                  </div>
+                )}
+                <StyledButton
+                  onClick={() => onConfirm("server", selectedMode, "groq")}
+                  variant={
+                    isLargeFile || inputType === "audio"
+                      ? "primary"
+                      : "secondary"
+                  }
+                  size="lg"
+                  className={`w-full group ${
+                    isLargeFile || inputType === "audio"
+                      ? "bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
+                      : ""
+                  }`}
+                >
+                  <Server size={20} className="mr-2" />
+                  Process with Groq (Server)
+                  {isLargeFile && " (Recommended)"}
+                </StyledButton>
 
-      <div className="text-center mt-6">
-        {/* <p className="text-xs text-slate-400">Version X.Y.Z</p> */}
+                {!(isLargeFile && inputType === "audio") && (
+                  <StyledButton
+                    onClick={() => onConfirm("client", selectedMode, "groq")}
+                    variant={
+                      !isLargeFile && inputType !== "audio"
+                        ? "primary"
+                        : "secondary"
+                    }
+                    size="lg"
+                    className="w-full group"
+                  >
+                    <CloudCog size={20} className="mr-2" />
+                    Process with Groq (Browser)
+                    {isLargeFile && inputType === "video" && " (May be Slow)"}
+                  </StyledButton>
+                )}
+                {isLargeFile && (
+                  <p className="text-xs mt-2 text-slate-500 dark:text-slate-400 text-center">
+                    Groq server processing is faster for large files.
+                  </p>
+                )}
+              </>
+            )}
+          </>
+        )}
       </div>
+
+      <div className="text-center mt-6"></div>
       <StyledButton
         onClick={onCancel}
         variant="ghost"
-        className="w-full mt-4 text-slate-600" // Added mt-4
+        className="w-full mt-4 text-slate-600 dark:text-slate-300"
       >
         Back / Change Input
       </StyledButton>

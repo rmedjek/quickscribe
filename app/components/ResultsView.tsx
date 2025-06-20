@@ -27,7 +27,11 @@ import {
   AIInteractionParams,
 } from "@/actions/interactWithTranscriptAction";
 import {APP_STEPS, TRANSCRIPTION_MODEL_DISPLAY_NAMES} from "@/types/app";
-import type {AppStep, TranscriptionMode} from "@/types/app";
+import type {
+  AppStep,
+  TranscriptionMode,
+  TranscriptionEngine,
+} from "@/types/app";
 import {AiResultCard, AiResultItem} from "./AiResultCard";
 
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
@@ -36,6 +40,7 @@ interface Props {
   transcriptionData: DetailedTranscriptionResult;
   transcriptLanguage: string;
   mode: TranscriptionMode;
+  engineUsed: TranscriptionEngine;
   onRestart: () => void;
 }
 
@@ -43,6 +48,7 @@ export default function ResultsView({
   transcriptionData,
   transcriptLanguage,
   mode,
+  engineUsed,
   onRestart,
 }: Props) {
   const [copied, setCopied] = useState(false);
@@ -115,8 +121,19 @@ export default function ResultsView({
       return () => clearTimeout(timer);
     }
   }, [newlyAddedResultId]);
+
   useEffect(() => {
-    setAiOutputLanguage(transcriptLanguage);
+    // Update aiOutputLanguage if transcriptLanguage changes (e.g., new transcript)
+    // Only update if transcriptLanguage is valid
+    if (
+      transcriptLanguage &&
+      typeof transcriptLanguage === "string" &&
+      transcriptLanguage.trim() !== ""
+    ) {
+      setAiOutputLanguage(transcriptLanguage);
+    } else {
+      setAiOutputLanguage("en"); // Default if incoming transcriptLanguage is bad
+    }
   }, [transcriptLanguage]);
 
   const copyText = () => {
@@ -439,50 +456,44 @@ export default function ResultsView({
               <span className="text-sm text-slate-500 dark:text-slate-400">
                 Language:
               </span>
-              <div className="inline-flex rounded-md shadow-sm bg-slate-100 dark:bg-slate-700 p-1">
+              <div className="inline-flex rounded-md shadow-sm bg-slate-100 dark:bg-slate-700 p-0.5">
                 <button
                   onClick={() => setAiOutputLanguage(transcriptLanguage)}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  className={`px-3 py-1 text-xs sm:text-sm rounded-md transition-colors ${
                     aiOutputLanguage === transcriptLanguage
-                      ? "bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-300 font-semibold"
-                      : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                      ? "bg-white dark:bg-slate-500 shadow text-sky-600 dark:text-sky-300 font-semibold"
+                      : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
                   }`}
                 >
                   {(() => {
-                    // IIFE for cleaner conditional logic
-                    try {
-                      // Ensure transcriptLanguage is a non-empty string before calling .of()
-                      if (
-                        transcriptLanguage &&
-                        typeof transcriptLanguage === "string" &&
-                        transcriptLanguage.trim() !== ""
-                      ) {
+                    if (
+                      transcriptLanguage &&
+                      transcriptLanguage.trim() !== ""
+                    ) {
+                      try {
+                        // Attempt to get full display name, fallback to uppercase code
                         const displayName = new Intl.DisplayNames(["en"], {
                           type: "language",
                         }).of(transcriptLanguage);
                         return (
                           displayName?.split(" ")[0] ||
                           transcriptLanguage.toUpperCase()
-                        );
+                        ); // Take first word of display name
+                      } catch {
+                        return transcriptLanguage.toUpperCase(); // Fallback for invalid codes
                       }
-                      return transcriptLanguage?.toUpperCase() || "Unknown"; // Fallback for empty or invalid
-                    } catch (e) {
-                      console.warn(
-                        "Error formatting language name:",
-                        transcriptLanguage,
-                        e
-                      );
-                      return transcriptLanguage?.toUpperCase() || "Lang"; // Further fallback
                     }
+                    return "Original"; // Fallback if transcriptLanguage is empty
                   })()}
                 </button>
+                {/* Only show English toggle if it's different from the original language */}
                 {transcriptLanguage !== "en" && (
                   <button
                     onClick={() => setAiOutputLanguage("en")}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    className={`px-3 py-1 text-xs sm:text-sm rounded-md transition-colors ${
                       aiOutputLanguage === "en"
-                        ? "bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-300 font-semibold"
-                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                        ? "bg-white dark:bg-slate-500 shadow text-sky-600 dark:text-sky-300 font-semibold"
+                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
                     }`}
                   >
                     English
@@ -705,7 +716,12 @@ export default function ResultsView({
       </StyledButton>
       <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
         Transcription completed using{" "}
-        <strong>{TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode]}</strong> mode.
+        <strong>
+          {engineUsed === "assembly"
+            ? "AssemblyAI (with Speaker Labels)"
+            : `${TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode]} (Groq)`}
+        </strong>
+        .
       </p>
     </div>
   );
