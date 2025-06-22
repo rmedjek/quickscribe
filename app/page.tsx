@@ -1,35 +1,31 @@
 // app/page.tsx
 "use client";
 
-import React, {useState, useCallback, useEffect} from "react";
-import {APP_STEPS} from "@/types/app";
+import React, {useState, useCallback} from "react";
+import {useRouter} from "next/navigation";
+
+// CORRECTED: Import `upload` and `UploadProgressEvent` from the client package...
+import {upload} from "@vercel/blob/client";
+// ...and import the `PutBlobResult` type from the main package.
+import type {PutBlobResult} from "@vercel/blob";
+
+import {type SelectedInputType} from "@/types/app";
+import {startTranscriptionJob} from "@/app/actions/jobActions";
+import {calculateFileHash} from "@/app/lib/hash-utils";
 
 import PageLayout from "@/components/PageLayout";
 import InputSelectionView from "@/components/InputSelectionView";
 import ConfirmationView, {
   TranscriptionMode,
 } from "@/components/ConfirmationView";
-import ProcessingView, {StageDisplayData} from "@/components/ProcessingView";
-import ResultsView from "@/components/ResultsView";
+
 import StyledButton from "@/components/StyledButton";
-
-import {FFmpeg} from "@ffmpeg/ffmpeg";
-import {getFFmpegInstance} from "@/lib/ffmpeg-utils";
-import {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
-
-import {useServerLinkProcessor} from "./hooks/useServerLinkProcessor";
-import {useClientFileProcessor} from "./hooks/useClientFileProcessor";
-import {useServerFileUploadProcessor} from "./hooks/useServerFileUploadProcessor";
-
-import type {SelectedInputType} from "@/types/app";
 import {StepperProvider, useStepper} from "./contexts/StepperContext";
 
 enum ViewState {
   SelectingInput,
   ConfirmingInput,
-  ProcessingClient,
-  ProcessingServer,
-  ShowingResults,
+  Submitting,
   Error,
 }
 
@@ -51,13 +47,7 @@ const getUserFriendlyErrorMessage = (
   if (
     context === "Server File Upload" &&
     (lowerError.includes("body exceeded") ||
-      lowerError.includes("payload too large") ||
-      (lowerError.includes(
-        "an unexpected response was received from the server"
-      ) &&
-        fileSizeMB &&
-        Number(fileSizeMB) >
-          parseInt(serverLimitForDisplay.replace(/[^0-9]/g, "")) * 0.9))
+      lowerError.includes("payload too large"))
   ) {
     return `The uploaded file (${
       fileName || "Selected file"
@@ -167,9 +157,9 @@ const getUserFriendlyErrorMessage = (
 
 /* ======================================================================== */
 function HomePageInner() {
-  const {setStep, step} = useStepper();
+  const {setStep} = useStepper();
+  const router = useRouter();
 
-  // ───────────────────────── local UI state (unchanged except currentAppStepId removed)
   const [currentView, setCurrentView] = useState<ViewState>(
     ViewState.SelectingInput
   );
@@ -177,206 +167,113 @@ function HomePageInner() {
   const [submittedLink, setSubmittedLink] = useState<string | null>(null);
   const [selectedInputType, setSelectedInputType] =
     useState<SelectedInputType | null>(null);
-
-  const [ffmpeg, setFfmpeg] = useState<FFmpeg | null>(null);
-  const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
-  const [currentOverallStatus, setCurrentOverallStatus] = useState("");
-  const [processingUIStages, setProcessingUIStages] = useState<
-    StageDisplayData[]
-  >([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [transcriptionData, setTranscriptionData] =
-    useState<DetailedTranscriptionResult | null>(null);
-  const [transcriptLanguage, setTranscriptLanguage] = useState<string>("en");
-
-  const handleProcessingComplete = useCallback(
-    (data: DetailedTranscriptionResult) => {
-      setTranscriptionData(data);
-      if (data.language) {
-        setTranscriptLanguage(data.language.split("-")[0]);
-      }
-      setCurrentOverallStatus("Transcription complete!");
-      setCurrentView(ViewState.ShowingResults);
-      setStep("transcribe"); // Ensure step is updated
-    },
-    [setStep]
-  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [submissionStatus, setSubmissionStatus] = useState("");
 
   const handleError = useCallback(
     (ctx: string, msg: string, fn?: string, sz?: string) => {
       const friendlyMsg = getUserFriendlyErrorMessage(ctx, msg, fn, sz);
-      console.error(
-        `[App Error] Context: ${ctx}, Original: ${msg}, Friendly: ${friendlyMsg}`
-      );
       setErrorMessage(friendlyMsg);
       setCurrentView(ViewState.Error);
+      setIsSubmitting(false);
     },
     []
   );
-
-  const handleStatusUpdate = useCallback(
-    (m: string) => setCurrentOverallStatus(m),
-    []
-  );
-
-  const handleStagesUpdate = useCallback(
-    (
-      s: StageDisplayData[] | ((p: StageDisplayData[]) => StageDisplayData[])
-    ) => {
-      setProcessingUIStages((prevStages) =>
-        typeof s === "function" ? s(prevStages) : [...s]
-      );
-    },
-    []
-  );
-
-  /* processing hooks ----------------------------------------------------- */
-  const {processFile: processClientFile} = useClientFileProcessor({
-    ffmpeg,
-    onProcessingComplete: handleProcessingComplete,
-    onError: (m, f, sz) => handleError("Client File Processing", m, f, sz),
-    onStatusUpdate: handleStatusUpdate,
-    onStagesUpdate: handleStagesUpdate,
-  });
-
-  const {processLink: processServerLink} = useServerLinkProcessor({
-    onProcessingComplete: handleProcessingComplete,
-    onError: (m) => handleError("Server Link Processing", m),
-    onStatusUpdate: handleStatusUpdate,
-    onStagesUpdate: handleStagesUpdate,
-  });
-
-  const {processFile: processServerUploadedFile} = useServerFileUploadProcessor(
-    {
-      onProcessingComplete: handleProcessingComplete,
-      onError: (m, f, sz) => handleError("Server File Upload", m, f, sz),
-      onStatusUpdate: handleStatusUpdate,
-      onStagesUpdate: handleStagesUpdate,
-    }
-  );
-
-  useEffect(() => {
-    if (ffmpeg || typeof window === "undefined") return; // If already loaded or on server, skip
-    console.log(
-      "[Page.tsx] Attempting to load FFmpeg instance via getFFmpegInstance..."
-    );
-    getFFmpegInstance(
-      (logMsg) => console.log("PageFFmpegLoad Log:", logMsg), // More specific log prefix
-      (progress) => console.log("PageFFmpegLoad Progress:", progress)
-    )
-      .then((loadedFfmpegInstance) => {
-        if (loadedFfmpegInstance) {
-          // The .load() within getFFmpegInstance has completed successfully if we reach here.
-          // We assume the instance is ready.
-          console.log(
-            "[Page.tsx] getFFmpegInstance resolved. Setting FFmpeg instance in state."
-          );
-
-          // Diagnostic log for isLoaded status
-          if (typeof loadedFfmpegInstance.isLoaded === "function") {
-            console.log(
-              `[Page.tsx] Diagnostic: loadedFfmpegInstance.isLoaded() reports: ${loadedFfmpegInstance.isLoaded()}`
-            );
-          } else {
-            console.log(
-              "[Page.tsx] Diagnostic: loadedFfmpegInstance.isLoaded is not available on this instance."
-            );
-          }
-          setFfmpeg(loadedFfmpegInstance);
-        } else {
-          // This path should ideally not be hit if getFFmpegInstance always returns an instance or throws.
-          console.error(
-            "[Page.tsx] getFFmpegInstance resolved but did not return a valid instance."
-          );
-          handleError(
-            "FFmpeg Load",
-            "Failed to obtain a valid FFmpeg instance."
-          );
-        }
-      })
-      .catch((e) => {
-        console.error("[Page.tsx] Error during FFmpeg WASM loading:", e);
-        handleError(
-          "FFmpeg Load",
-          `FFmpeg WASM failed to load: ${
-            e instanceof Error ? e.message : String(e)
-          }`
-        );
-      });
-  }, [ffmpeg, handleError]);
 
   const resetToStart = useCallback(() => {
     setSelectedFile(null);
     setSubmittedLink(null);
-    setSelectedInputType(null);
-    setCurrentOverallStatus("");
-    setProcessingUIStages([]);
     setErrorMessage(null);
-    setTranscriptionData(null);
     setCurrentView(ViewState.SelectingInput);
     setStep("configure");
+    setIsSubmitting(false);
+    setUploadProgress(0);
+    setSubmissionStatus("");
   }, [setStep]);
 
   const handleFileSelected = (file: File) => {
     setSelectedFile(file);
     setSubmittedLink(null);
-    if (file.type.startsWith("audio/")) {
-      setSelectedInputType("audio");
-    } else if (file.type.startsWith("video/")) {
-      setSelectedInputType("video");
+    if (file.type.startsWith("audio/") || file.type.startsWith("video/")) {
+      setSelectedInputType(file.type.startsWith("audio/") ? "audio" : "video");
+      setCurrentView(ViewState.ConfirmingInput);
     } else {
-      // This case should be rare due to InputSelectionView's validation,
-      // but it's a good fallback.
       handleError(
         "File Type Error",
         `Unsupported file type: ${file.type}. Please select a valid video or audio file.`
       );
-      return; // Important to return here so we don't proceed to ConfirmationView
     }
-    setStep("configure");
-    setCurrentView(ViewState.ConfirmingInput);
   };
 
   const handleLinkSubmitted = (link: string) => {
     setSubmittedLink(link);
     setSelectedFile(null);
     setSelectedInputType("link");
-    setStep("configure");
     setCurrentView(ViewState.ConfirmingInput);
   };
 
-  const handleConfirmation = (
+  const handleConfirmation = async (
     processingPath: "client" | "server",
     mode: TranscriptionMode
   ) => {
-    setSelectedMode(mode);
-
-    if (selectedInputType === "link" && submittedLink) {
-      setCurrentView(ViewState.ProcessingServer);
-      processServerLink(submittedLink, mode);
-    } else if (selectedFile && selectedInputType) {
-      const isAudio = selectedInputType === "audio";
-      if (processingPath === "client") {
-        // <<< Path for "Process in Browser"
-        setCurrentView(ViewState.ProcessingClient);
-        processClientFile(selectedFile, mode, isAudio);
-      } else {
-        // processingPath === "server"
-        setCurrentView(ViewState.ProcessingServer);
-        processServerUploadedFile(selectedFile, mode, isAudio); // NOT this for client path
-      }
-    } else {
-      console.error(
-        "Confirmation error: No valid input (file/link and type) found."
-      );
+    if (submittedLink) {
       handleError(
-        "Confirmation Error",
-        "No valid input found for processing. Please try selecting your input again."
+        "Not Implemented",
+        "Link processing is being updated for the new system and is temporarily unavailable."
       );
+      return;
+    }
+    if (!selectedFile) {
+      handleError("File Error", "No file selected to start a job.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setCurrentView(ViewState.Submitting);
+    setStep("process");
+
+    let newBlob: PutBlobResult | null = null;
+
+    try {
+      setSubmissionStatus("Analyzing file...");
+      const fileHash = await calculateFileHash(selectedFile);
+
+      setSubmissionStatus("Uploading file...");
+      newBlob = await upload(selectedFile.name, selectedFile, {
+        access: "public",
+        handleUploadUrl: "/api/client-upload",
+        onUploadProgress: (progress) => {
+          setUploadProgress(progress.percentage);
+        },
+      });
+
+      setSubmissionStatus("Creating transcription job...");
+      const result = await startTranscriptionJob({
+        blobUrl: newBlob.url,
+        originalFileName: selectedFile.name,
+        fileSize: selectedFile.size,
+        fileHash: fileHash,
+        transcriptionMode: mode,
+      });
+
+      if (result.success && result.jobId) {
+        router.push(`/dashboard/job/${result.jobId}`);
+      } else {
+        throw new Error(result.error || "Server failed to create the job.");
+      }
+    } catch (error: unknown) {
+      const msg =
+        error instanceof Error
+          ? error.message
+          : "An unknown error occurred during submission.";
+
+      const context = newBlob ? "Job Creation" : "File Upload";
+      handleError(context, msg);
     }
   };
 
-  /* render --------------------------------------------------------------- */
   const renderCurrentView = () => {
     switch (currentView) {
       case ViewState.SelectingInput:
@@ -394,28 +291,25 @@ function HomePageInner() {
             inputType={selectedInputType}
             onConfirm={handleConfirmation}
             onCancel={resetToStart}
+            isSubmitting={isSubmitting}
           />
         );
-      case ViewState.ProcessingClient:
-      case ViewState.ProcessingServer:
+      case ViewState.Submitting:
         return (
-          <ProcessingView
-            stages={processingUIStages}
-            currentOverallStatusMessage={currentOverallStatus}
-            appSteps={APP_STEPS}
-            currentAppStepId={step}
-          />
-        );
-      case ViewState.ShowingResults:
-        return (
-          transcriptionData && (
-            <ResultsView
-              transcriptionData={transcriptionData}
-              transcriptLanguage={transcriptLanguage}
-              mode={selectedMode}
-              onRestart={resetToStart}
-            />
-          )
+          <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-xl w-full max-w-lg mx-auto text-center">
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-4">
+              {submissionStatus}
+            </h2>
+            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
+              <div
+                className="bg-sky-600 h-4 rounded-full transition-all duration-300"
+                style={{width: `${uploadProgress}%`}}
+              ></div>
+            </div>
+            <p className="text-sm text-slate-500 mt-4">
+              Your job is being submitted. You will be redirected shortly.
+            </p>
+          </div>
         );
       case ViewState.Error:
         return (
@@ -424,8 +318,6 @@ function HomePageInner() {
               An Error Occurred
             </h2>
             <p className="text-slate-700 dark:text-slate-200 mb-6 break-words">
-              {" "}
-              {/* Added break-words */}
               {errorMessage ?? "An unspecified error occurred."}
             </p>
             <StyledButton onClick={resetToStart} variant="secondary">

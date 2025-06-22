@@ -1,48 +1,46 @@
 // app/components/ConfirmationView.tsx
 "use client";
 
-import React, {useState} from "react"; // Removed useEffect as it wasn't used
+import React, {useState} from "react";
 import {
   FileText,
-  AlertTriangle,
-  Server,
-  CloudCog,
   Zap,
   Shield,
   Music,
   Video,
+  Loader2, // Import loader icon for the button
 } from "lucide-react";
 import {APP_STEPS} from "@/types/app";
 import StyledButton from "./StyledButton";
 import ProgressStepper from "./ProgressStepper";
 import {SelectedInputType} from "@/types/app";
 
-const MAX_CLIENT_SIZE_BYTES = 200 * 1024 * 1024; // 200MB example
 export type TranscriptionMode = "core" | "turbo";
 
+// The props are simplified and now include `isSubmitting`
 interface ConfirmationViewProps {
   file: File | null;
   link: string | null;
-  inputType: SelectedInputType | null; // NEW PROP to distinguish audio/video/link
+  inputType: SelectedInputType | null;
   onConfirm: (
+    // The processingPath is now less relevant but kept for function signature compatibility
     processingPath: "client" | "server",
     mode: TranscriptionMode
   ) => void;
   onCancel: () => void;
+  isSubmitting?: boolean;
 }
-
-// Step definitions used by the shared progress stepper
 
 const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   file,
   link,
-  inputType, // Destructure and use the new prop
+  inputType,
   onConfirm,
   onCancel,
+  isSubmitting = false,
 }) => {
   const isFileProvided = !!file;
-  const isLinkProvided = !!link && !file; // This logic is fine
-  const isLargeFile = isFileProvided && file.size > MAX_CLIENT_SIZE_BYTES;
+  const isLinkProvided = !!link && !file;
 
   const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
 
@@ -59,7 +57,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
     if (isFileProvided) {
       if (inputType === "audio") return "Audio File";
       if (inputType === "video") return "Video File";
-      return "File"; // Fallback
+      return "File";
     }
     return "Input";
   };
@@ -76,10 +74,37 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
     return <FileText size={16} className="inline mr-1.5 text-slate-500" />;
   };
 
+  // --- RENDER LOGIC FOR A SINGLE, UNIFIED CONFIRM BUTTON ---
+  const renderConfirmButton = () => {
+    const buttonText = isLinkProvided
+      ? "Process Link & Transcribe"
+      : "Upload & Transcribe";
+
+    return (
+      <StyledButton
+        // All paths now lead to a server-side job, so we hardcode "server"
+        onClick={() => onConfirm("server", selectedMode)}
+        variant="primary"
+        size="lg"
+        className="w-full bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
+        disabled={isSubmitting} // Disable the button when the submission process starts
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 size={20} className="animate-spin mr-2" />
+            Submitting...
+          </>
+        ) : (
+          buttonText
+        )}
+      </StyledButton>
+    );
+  };
+
   return (
     <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700 dark:text-slate-200">
       <div className="text-center mb-6">
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">
+        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-50">
           QuickScribe
         </h1>
         <p className="text-sm text-slate-500 mt-1">Powered by Groq</p>
@@ -87,7 +112,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
 
       <ProgressStepper steps={APP_STEPS} currentStepId="configure" />
 
-      <div className="mb-6 p-4 border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm">
+      <div className="my-6 p-4 border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm rounded-lg">
         <h3 className="text-base font-semibold mb-2 text-slate-700 dark:text-slate-200 flex items-center">
           {getInputIcon()} Selected {getInputTypeDisplayName()}:
         </h3>
@@ -111,16 +136,14 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
         )}
       </div>
 
-      {/* core/Turbo Toggle & Mode Cards (only if file or link is provided) */}
       {(isFileProvided || isLinkProvided) && (
         <>
-          {/* ... (core/Turbo toggle and Mode Cards remain the same) ... */}
           <div className="mb-6 flex items-center justify-center space-x-2">
             <span
               className={`px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
                 selectedMode === "core"
                   ? "bg-sky-500 text-white shadow-md"
-                  : "text-slate-500 hover:bg-slate-100"
+                  : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
               }`}
               onClick={() => setSelectedMode("core")}
             >
@@ -133,12 +156,6 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
               onClick={() =>
                 setSelectedMode(selectedMode === "core" ? "turbo" : "core")
               }
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setSelectedMode(selectedMode === "core" ? "turbo" : "core");
-                }
-              }}
               role="switch"
               aria-checked={selectedMode === "turbo"}
               tabIndex={0}
@@ -153,7 +170,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
               className={`px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
                 selectedMode === "turbo"
                   ? "bg-orange-500 text-white shadow-md"
-                  : "text-slate-500 hover:bg-slate-100"
+                  : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
               }`}
               onClick={() => setSelectedMode("turbo")}
             >
@@ -162,23 +179,17 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
           </div>
 
           <div className="mb-8">
-            <h3 className="text-lg font-semibold text-slate-800 mb-3 text-center">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3 text-center">
               Transcription Modes
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div
                 className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   selectedMode === "core"
-                    ? "border-sky-500 bg-sky-50 shadow-lg scale-105"
-                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300"
+                    ? "border-sky-500 bg-sky-50 dark:bg-sky-900/40 shadow-lg scale-105"
+                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 hover:border-slate-300 dark:hover:border-slate-500"
                 }`}
                 onClick={() => setSelectedMode("core")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setSelectedMode("core");
-                  }
-                }}
                 role="radio"
                 aria-checked={selectedMode === "core"}
                 tabIndex={0}
@@ -196,17 +207,20 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                     Core Mode
                   </h4>
                 </div>
-                <p className="text-xs text-slate-500">
-                  Efficient & fast with Whisper-large. Good for most cases.
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Efficient & fast. Good for most use cases.
                 </p>
               </div>
               <div
                 className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   selectedMode === "turbo"
-                    ? "border-orange-500 bg-orange-50 shadow-lg scale-105"
-                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-slate-300"
+                    ? "border-orange-500 bg-orange-50 dark:bg-orange-900/30 shadow-lg scale-105"
+                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 hover:border-slate-300 dark:hover:border-slate-500"
                 }`}
                 onClick={() => setSelectedMode("turbo")}
+                role="radio"
+                aria-checked={selectedMode === "turbo"}
+                tabIndex={0}
               >
                 <div className="flex items-center mb-1">
                   <Zap
@@ -221,9 +235,8 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
                     Turbo Mode
                   </h4>
                 </div>
-                <p className="text-xs text-slate-500">
-                  Highest accuracy with Whisper Large v3 Turbo. Best for
-                  critical quality.
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Highest accuracy. Best for critical quality.
                 </p>
               </div>
             </div>
@@ -231,101 +244,17 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
         </>
       )}
 
-      {/* --- Action Buttons --- */}
-      {/* Case 1: Link is provided (always server processing) */}
-      {isLinkProvided && (
-        <StyledButton
-          onClick={() => onConfirm("server", selectedMode)}
-          variant="primary"
-          size="lg"
-          className="w-full bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
-        >
-          Generate Transcripts from Link
-        </StyledButton>
-      )}
-
-      {/* Case 2: File is provided */}
-      {isFileProvided && (
-        <>
-          {isLargeFile && (
-            <div className="mb-4 p-3 border border-amber-300 rounded-lg bg-amber-50 text-amber-600 text-xs flex items-center">
-              <AlertTriangle
-                size={18}
-                className="text-amber-500 mr-2 flex-shrink-0"
-              />
-              <span>
-                Large file ({file ? formatFileSize(file.size) : "N/A"}). Server
-                processing is recommended.
-              </span>
-            </div>
-          )}
-
-          <div className="space-y-3">
-            {/* Server Processing Button */}
-            <StyledButton
-              onClick={() => onConfirm("server", selectedMode)}
-              // For large files OR audio files, server is often preferred/safer.
-              // Make server primary if large, or if it's audio (unless small audio where client is also fine).
-              variant={
-                isLargeFile || inputType === "audio" ? "primary" : "secondary"
-              }
-              size="lg"
-              className={`w-full group ${
-                isLargeFile || inputType === "audio"
-                  ? "bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
-                  : ""
-              }`}
-            >
-              <Server size={20} className="mr-2" />
-              Process on Server
-              {isLargeFile && " (Recommended)"}
-              {inputType === "audio" && !isLargeFile && " (Audio File)"}
-            </StyledButton>
-
-            {/* Client Processing Button - show unless it's a large audio file where server is heavily pushed */}
-            {!(isLargeFile && inputType === "audio") && (
-              <StyledButton
-                onClick={() => onConfirm("client", selectedMode)}
-                variant={
-                  !isLargeFile && inputType !== "audio"
-                    ? "primary"
-                    : "secondary"
-                } // Primary if small video. Secondary otherwise.
-                size="lg"
-                className="w-full group"
-              >
-                <CloudCog size={20} className="mr-2" />
-                Process in Browser
-                {isLargeFile &&
-                  inputType === "video" &&
-                  " (May be Slow for Large Video)"}
-                {!isLargeFile && inputType === "audio" && " (Audio File)"}
-              </StyledButton>
-            )}
-          </div>
-
-          {isLargeFile && (
-            <p className="text-xs mt-3 text-slate-500 text-center">
-              Server processing is faster and more reliable for large files.
-              Your file is uploaded securely and deleted after processing.
-            </p>
-          )}
-          {!isLargeFile && inputType === "audio" && (
-            <p className="text-xs mt-3 text-slate-500 text-center">
-              For audio files, browser processing sends the file directly for
-              transcription (may convert to Opus if needed).
-            </p>
-          )}
-        </>
-      )}
-
-      <div className="text-center mt-6">
-        {/* <p className="text-xs text-slate-400">Version X.Y.Z</p> */}
+      {/* --- REFACTORED ACTION BUTTONS --- */}
+      <div className="space-y-3">
+        {/* The old complex logic is replaced by a single confirm button */}
+        {renderConfirmButton()}
       </div>
+
       <StyledButton
         onClick={onCancel}
         variant="ghost"
-        className="w-full mt-4 text-slate-600" // Added mt-4
+        className="w-full mt-4 text-slate-600 dark:text-slate-300"
+        disabled={isSubmitting} // Also disable the back button during submission
       >
         Back / Change Input
       </StyledButton>

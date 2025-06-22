@@ -19,7 +19,6 @@
 
 # production
 /build
-package-lock.json
 
 # misc
 .DS_Store
@@ -44,3 +43,7 @@ next-env.d.ts
 *.txt
 .vscode
 package-lock.json
+/generated/prisma
+
+# Sentry Config File
+.env.sentry-build-plugin

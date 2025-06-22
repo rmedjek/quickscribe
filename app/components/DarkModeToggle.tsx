@@ -1,4 +1,4 @@
-// app/components/DarkModeToggle.tsx
+// File: app/components/DarkModeToggle.tsx
 "use client";
 
 import {MoonStar, Sun} from "lucide-react";
@@ -13,7 +13,9 @@ export default function DarkModeToggle() {
       variant="ghost"
       aria-label="Toggle dark mode"
       onClick={toggle}
-      className="fixed right-4 top-4 sm:right-6 sm:top-6 z-50 shadow-md bg-white/70 dark:bg-slate-800/70 backdrop-blur rounded-full"
+      // CORRECTED: The conflicting positioning classes have been removed from here.
+      // The positioning is now handled entirely by the header in app/layout.tsx.
+      className="shadow-md bg-white/70 dark:bg-slate-800/70 backdrop-blur rounded-full"
     >
       {dark ? <Sun size={18} /> : <MoonStar size={18} />}
     </StyledButton>
