@@ -2,14 +2,14 @@
 "use server";
 
 import {PrismaClient} from "@prisma/client";
+import {auth} from "@/lib/auth";
 import {revalidatePath} from "next/cache";
 import {TranscriptionMode} from "@/components/ConfirmationView";
-import {auth} from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
-// CORRECTED: 'transcriptionMode' is now an official part of the interface.
-interface StartJobParams {
+// --- Action for FILE UPLOADS ---
+interface StartFileJobParams {
   blobUrl: string;
   originalFileName: string;
   fileSize: number;
@@ -17,7 +17,7 @@ interface StartJobParams {
   transcriptionMode: TranscriptionMode;
 }
 
-export async function startTranscriptionJob(params: StartJobParams) {
+export async function startTranscriptionJob(params: StartFileJobParams) {
   const session = await auth();
   const userId = session?.user?.id;
 
@@ -31,29 +31,58 @@ export async function startTranscriptionJob(params: StartJobParams) {
   try {
     const newJob = await prisma.transcriptionJob.create({
       data: {
-        userId: userId,
+        userId,
         status: "PENDING",
         fileUrl: blobUrl,
         sourceFileName: originalFileName,
         sourceFileSize: fileSize,
         sourceFileHash: fileHash,
-        engineUsed: transcriptionMode, // This will now work without error.
+        engineUsed: transcriptionMode,
       },
     });
 
-    // In Phase 2, we will trigger the worker here.
-    // import { inngest } from "@/app/inngest";
-    // await inngest.send({ name: 'transcription.requested', data: { jobId: newJob.id } });
-
-    console.log(
-      `[JobAction] Created job ${newJob.id} for user ${userId} with mode ${transcriptionMode}`
-    );
-
+    console.log(`[JobAction] Created FILE job ${newJob.id} for user ${userId}`);
     revalidatePath("/dashboard");
-
     return {success: true, jobId: newJob.id};
   } catch (error) {
-    console.error("Error creating transcription job:", error);
+    console.error("Error creating file transcription job:", error);
+    return {success: false, error: "Failed to create job in database."};
+  }
+}
+
+// --- NEW Action for LINK SUBMISSIONS ---
+interface StartLinkJobParams {
+  linkUrl: string;
+  transcriptionMode: TranscriptionMode;
+}
+
+export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
+  const session = await auth();
+  const userId = session?.user?.id;
+
+  if (!userId) {
+    return {success: false, error: "Unauthorized"};
+  }
+
+  const {linkUrl, transcriptionMode} = params;
+
+  try {
+    const newJob = await prisma.transcriptionJob.create({
+      data: {
+        userId,
+        status: "PENDING",
+        fileUrl: linkUrl,
+        sourceFileName: linkUrl,
+        sourceFileSize: 0, // We don't know the size yet
+        engineUsed: transcriptionMode,
+      },
+    });
+
+    console.log(`[JobAction] Created LINK job ${newJob.id} for user ${userId}`);
+    revalidatePath("/dashboard");
+    return {success: true, jobId: newJob.id};
+  } catch (error) {
+    console.error("Error creating link transcription job:", error);
     return {success: false, error: "Failed to create job in database."};
   }
 }

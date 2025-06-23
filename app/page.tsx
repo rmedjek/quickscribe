@@ -3,22 +3,21 @@
 
 import React, {useState, useCallback} from "react";
 import {useRouter} from "next/navigation";
-
-// CORRECTED: Import `upload` and `UploadProgressEvent` from the client package...
 import {upload} from "@vercel/blob/client";
-// ...and import the `PutBlobResult` type from the main package.
-import type {PutBlobResult} from "@vercel/blob";
 
-import {type SelectedInputType} from "@/types/app";
-import {startTranscriptionJob} from "@/app/actions/jobActions";
+// CORRECTED: Import both server actions
+import {
+  startTranscriptionJob,
+  startLinkTranscriptionJob,
+} from "@/app/actions/jobActions";
 import {calculateFileHash} from "@/app/lib/hash-utils";
 
+import {type SelectedInputType} from "@/types/app";
 import PageLayout from "@/components/PageLayout";
 import InputSelectionView from "@/components/InputSelectionView";
 import ConfirmationView, {
   TranscriptionMode,
 } from "@/components/ConfirmationView";
-
 import StyledButton from "@/components/StyledButton";
 import {StepperProvider, useStepper} from "./contexts/StepperContext";
 
@@ -155,7 +154,6 @@ const getUserFriendlyErrorMessage = (
   return "Oops! Something went wrong during processing. Please try again. If the problem continues, the file might be unsuitable.";
 };
 
-/* ======================================================================== */
 function HomePageInner() {
   const {setStep} = useStepper();
   const router = useRouter();
@@ -172,15 +170,12 @@ function HomePageInner() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [submissionStatus, setSubmissionStatus] = useState("");
 
-  const handleError = useCallback(
-    (ctx: string, msg: string, fn?: string, sz?: string) => {
-      const friendlyMsg = getUserFriendlyErrorMessage(ctx, msg, fn, sz);
-      setErrorMessage(friendlyMsg);
-      setCurrentView(ViewState.Error);
-      setIsSubmitting(false);
-    },
-    []
-  );
+  const handleError = useCallback((ctx: string, msg: string) => {
+    const friendlyMsg = getUserFriendlyErrorMessage(ctx, msg);
+    setErrorMessage(friendlyMsg);
+    setCurrentView(ViewState.Error);
+    setIsSubmitting(false);
+  }, []);
 
   const resetToStart = useCallback(() => {
     setSelectedFile(null);
@@ -218,45 +213,42 @@ function HomePageInner() {
     processingPath: "client" | "server",
     mode: TranscriptionMode
   ) => {
-    if (submittedLink) {
-      handleError(
-        "Not Implemented",
-        "Link processing is being updated for the new system and is temporarily unavailable."
-      );
-      return;
-    }
-    if (!selectedFile) {
-      handleError("File Error", "No file selected to start a job.");
-      return;
-    }
-
     setIsSubmitting(true);
     setCurrentView(ViewState.Submitting);
     setStep("process");
 
-    let newBlob: PutBlobResult | null = null;
-
     try {
-      setSubmissionStatus("Analyzing file...");
-      const fileHash = await calculateFileHash(selectedFile);
+      let result: {success: boolean; jobId?: string; error?: string};
 
-      setSubmissionStatus("Uploading file...");
-      newBlob = await upload(selectedFile.name, selectedFile, {
-        access: "public",
-        handleUploadUrl: "/api/client-upload",
-        onUploadProgress: (progress) => {
-          setUploadProgress(progress.percentage);
-        },
-      });
+      if (selectedFile) {
+        setSubmissionStatus("Analyzing file...");
+        const fileHash = await calculateFileHash(selectedFile);
 
-      setSubmissionStatus("Creating transcription job...");
-      const result = await startTranscriptionJob({
-        blobUrl: newBlob.url,
-        originalFileName: selectedFile.name,
-        fileSize: selectedFile.size,
-        fileHash: fileHash,
-        transcriptionMode: mode,
-      });
+        setSubmissionStatus("Uploading file...");
+        const newBlob = await upload(selectedFile.name, selectedFile, {
+          access: "public",
+          handleUploadUrl: "/api/client-upload",
+          onUploadProgress: (progress) =>
+            setUploadProgress(progress.percentage),
+        });
+
+        setSubmissionStatus("Creating transcription job...");
+        result = await startTranscriptionJob({
+          blobUrl: newBlob.url,
+          originalFileName: selectedFile.name,
+          fileSize: selectedFile.size,
+          fileHash: fileHash,
+          transcriptionMode: mode,
+        });
+      } else if (submittedLink) {
+        setSubmissionStatus("Creating transcription job...");
+        result = await startLinkTranscriptionJob({
+          linkUrl: submittedLink,
+          transcriptionMode: mode,
+        });
+      } else {
+        throw new Error("No file or link was provided.");
+      }
 
       if (result.success && result.jobId) {
         router.push(`/dashboard/job/${result.jobId}`);
@@ -268,9 +260,7 @@ function HomePageInner() {
         error instanceof Error
           ? error.message
           : "An unknown error occurred during submission.";
-
-      const context = newBlob ? "Job Creation" : "File Upload";
-      handleError(context, msg);
+      handleError("Job Submission", msg);
     }
   };
 
@@ -300,12 +290,14 @@ function HomePageInner() {
             <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-4">
               {submissionStatus}
             </h2>
-            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
-              <div
-                className="bg-sky-600 h-4 rounded-full transition-all duration-300"
-                style={{width: `${uploadProgress}%`}}
-              ></div>
-            </div>
+            {selectedFile && (
+              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
+                <div
+                  className="bg-sky-600 h-4 rounded-full transition-all duration-300"
+                  style={{width: `${uploadProgress}%`}}
+                />
+              </div>
+            )}
             <p className="text-sm text-slate-500 mt-4">
               Your job is being submitted. You will be redirected shortly.
             </p>
@@ -318,7 +310,7 @@ function HomePageInner() {
               An Error Occurred
             </h2>
             <p className="text-slate-700 dark:text-slate-200 mb-6 break-words">
-              {errorMessage ?? "An unspecified error occurred."}
+              {errorMessage}
             </p>
             <StyledButton onClick={resetToStart} variant="secondary">
               Start Over

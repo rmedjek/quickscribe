@@ -23,6 +23,13 @@ export const {handlers, auth, signIn, signOut} = NextAuth({
   session: {
     strategy: "jwt",
   },
+  // --- THIS IS THE NEW SECTION ---
+  pages: {
+    signIn: "/signin", // Tells Auth.js to use our custom sign-in page
+    // You can also add custom pages for error, signout, etc.
+    // error: '/auth/error',
+  },
+  // --- END NEW SECTION ---
   callbacks: {
     async jwt({token, user}) {
       if (user) {

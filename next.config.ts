@@ -5,14 +5,12 @@ const serverActionBodyLimit =
   process.env.SERVER_ACTION_BODY_LIMIT_CONFIG || "50mb";
 
 const nextConfig: NextConfig = {
-  // This section is for the server action body limit, it can remain.
   experimental: {
     serverActions: {
       bodySizeLimit: serverActionBodyLimit as SizeLimit,
     },
   },
 
-  // This is the new section we are adding.
   images: {
     remotePatterns: [
       {
@@ -30,8 +28,26 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // This section for webpack can also remain.
-  webpack(config) {
+  webpack(config, {isServer}) {
+    // --- THIS IS THE FIX ---
+    // We configure webpack to ignore these specific warnings from Sentry's auto-instrumentation.
+    // This is safe because we know they are expected and not actual errors.
+    if (isServer) {
+      config.ignoreWarnings = [
+        {
+          module: /@opentelemetry\/instrumentation/,
+          message:
+            /Critical dependency: the request of a dependency is an expression/,
+        },
+        {
+          module: /@sentry\/node/,
+          message:
+            /Critical dependency: the request of a dependency is an expression/,
+        },
+      ];
+    }
+    // End of fix
+
     config.experiments = {
       ...config.experiments,
       asyncWebAssembly: true,

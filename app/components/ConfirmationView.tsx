@@ -2,13 +2,15 @@
 "use client";
 
 import React, {useState} from "react";
+import {useSession} from "next-auth/react"; // Import the useSession hook
 import {
   FileText,
   Zap,
   Shield,
   Music,
   Video,
-  Loader2, // Import loader icon for the button
+  Loader2,
+  LogIn,
 } from "lucide-react";
 import {APP_STEPS} from "@/types/app";
 import StyledButton from "./StyledButton";
@@ -17,13 +19,11 @@ import {SelectedInputType} from "@/types/app";
 
 export type TranscriptionMode = "core" | "turbo";
 
-// The props are simplified and now include `isSubmitting`
 interface ConfirmationViewProps {
   file: File | null;
   link: string | null;
   inputType: SelectedInputType | null;
   onConfirm: (
-    // The processingPath is now less relevant but kept for function signature compatibility
     processingPath: "client" | "server",
     mode: TranscriptionMode
   ) => void;
@@ -39,9 +39,14 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   onCancel,
   isSubmitting = false,
 }) => {
+  // --- AUTH AWARENESS ---
+  // We now check the authentication status on the client.
+  const {status: authStatus} = useSession();
+  const isAuthenticated = authStatus === "authenticated";
+  const isAuthLoading = authStatus === "loading";
+
   const isFileProvided = !!file;
   const isLinkProvided = !!link && !file;
-
   const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
 
   const formatFileSize = (bytes: number): string => {
@@ -74,20 +79,45 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
     return <FileText size={16} className="inline mr-1.5 text-slate-500" />;
   };
 
-  // --- RENDER LOGIC FOR A SINGLE, UNIFIED CONFIRM BUTTON ---
+  // --- RENDER LOGIC FOR THE ACTION BUTTON ---
   const renderConfirmButton = () => {
+    if (isAuthLoading) {
+      return (
+        <StyledButton size="lg" className="w-full" disabled>
+          <Loader2 size={20} className="animate-spin mr-2" />
+          Authenticating...
+        </StyledButton>
+      );
+    }
+
+    if (!isAuthenticated) {
+      return (
+        <StyledButton
+          variant="secondary"
+          size="lg"
+          className="w-full"
+          // We can't actually sign in from here, so we just show the message.
+          // The user should use the main "Sign In" button in the header.
+          disabled
+        >
+          <LogIn size={20} className="mr-2" />
+          Please Sign In to Continue
+        </StyledButton>
+      );
+    }
+
+    // If authenticated, show the normal button
     const buttonText = isLinkProvided
       ? "Process Link & Transcribe"
       : "Upload & Transcribe";
 
     return (
       <StyledButton
-        // All paths now lead to a server-side job, so we hardcode "server"
         onClick={() => onConfirm("server", selectedMode)}
         variant="primary"
         size="lg"
         className="w-full bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
-        disabled={isSubmitting} // Disable the button when the submission process starts
+        disabled={isSubmitting}
       >
         {isSubmitting ? (
           <>
@@ -244,17 +274,32 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
         </>
       )}
 
-      {/* --- REFACTORED ACTION BUTTONS --- */}
       <div className="space-y-3">
-        {/* The old complex logic is replaced by a single confirm button */}
-        {renderConfirmButton()}
+        <StyledButton
+          onClick={() => onConfirm("server", selectedMode)}
+          variant="primary"
+          size="lg"
+          className="w-full bg-orange-500 hover:bg-orange-600 focus-visible:ring-orange-400"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 size={20} className="animate-spin mr-2" />
+              Submitting...
+            </>
+          ) : isLinkProvided ? (
+            "Process Link & Transcribe"
+          ) : (
+            "Upload & Transcribe"
+          )}
+        </StyledButton>
       </div>
 
       <StyledButton
         onClick={onCancel}
         variant="ghost"
         className="w-full mt-4 text-slate-600 dark:text-slate-300"
-        disabled={isSubmitting} // Also disable the back button during submission
+        disabled={isSubmitting}
       >
         Back / Change Input
       </StyledButton>
