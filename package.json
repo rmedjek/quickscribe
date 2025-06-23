@@ -23,6 +23,7 @@
     "@vercel/blob": "^1.1.1",
     "clsx": "^2.1.1",
     "groq-sdk": "^0.22.0",
+    "inngest": "^3.39.2",
     "jszip": "^3.10.1",
     "lucide-react": "^0.511.0",
     "nanoid": "^5.1.5",

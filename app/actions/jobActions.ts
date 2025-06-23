@@ -5,6 +5,9 @@ import {PrismaClient} from "@prisma/client";
 import {auth} from "@/lib/auth";
 import {revalidatePath} from "next/cache";
 import {TranscriptionMode} from "@/components/ConfirmationView";
+import {inngest} from "../api/inngest/route";
+// We will create this Inngest client file in the next step.
+// For now, this will show a TypeScript error, which is expected.
 
 const prisma = new PrismaClient();
 
@@ -41,7 +44,19 @@ export async function startTranscriptionJob(params: StartFileJobParams) {
       },
     });
 
-    console.log(`[JobAction] Created FILE job ${newJob.id} for user ${userId}`);
+    // --- THIS IS THE NEW PART ---
+    // After creating the job, send an event to Inngest.
+    await inngest.send({
+      name: "transcription.requested",
+      data: {
+        jobId: newJob.id,
+        isLinkJob: false, // Flag to tell the worker this is a file job
+      },
+    });
+
+    console.log(
+      `[JobAction] Created FILE job ${newJob.id} and sent 'transcription.requested' event.`
+    );
     revalidatePath("/dashboard");
     return {success: true, jobId: newJob.id};
   } catch (error) {
@@ -50,7 +65,7 @@ export async function startTranscriptionJob(params: StartFileJobParams) {
   }
 }
 
-// --- NEW Action for LINK SUBMISSIONS ---
+// --- Action for LINK SUBMISSIONS ---
 interface StartLinkJobParams {
   linkUrl: string;
   transcriptionMode: TranscriptionMode;
@@ -73,12 +88,24 @@ export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
         status: "PENDING",
         fileUrl: linkUrl,
         sourceFileName: linkUrl,
-        sourceFileSize: 0, // We don't know the size yet
+        sourceFileSize: 0,
         engineUsed: transcriptionMode,
       },
     });
 
-    console.log(`[JobAction] Created LINK job ${newJob.id} for user ${userId}`);
+    // --- THIS IS THE NEW PART ---
+    // Send the same event, but flag it as a link job.
+    await inngest.send({
+      name: "transcription.requested",
+      data: {
+        jobId: newJob.id,
+        isLinkJob: true, // This tells the worker to use the link processing logic
+      },
+    });
+
+    console.log(
+      `[JobAction] Created LINK job ${newJob.id} and sent 'transcription.requested' event.`
+    );
     revalidatePath("/dashboard");
     return {success: true, jobId: newJob.id};
   } catch (error) {
