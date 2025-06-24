@@ -5,34 +5,46 @@ import {NextResponse} from "next/server";
 import {auth} from "@/lib/auth";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const session = await auth();
+  const body = (await request.json()) as HandleUploadBody;
 
-  // This is the critical security check. If there is no session or no user ID,
-  // we must terminate the request immediately.
-  if (!session?.user?.id) {
+  const session = await auth();
+  const userId = session?.user?.id;
+
+  if (!userId) {
     return NextResponse.json(
       {error: "Unauthorized: You must be logged in to upload files."},
       {status: 401}
     );
   }
 
-  const userId = session.user.id;
-  const body = (await request.json()) as HandleUploadBody;
-
   try {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async (pathname) => {
+      onBeforeGenerateToken: async (clientPathname) => {
+        // We will still prefix with the user's ID for security and organization.
+        const securePathPrefix = `${userId}/`;
+
         return {
-          // Prefix the pathname with the user's ID to ensure they can only upload to their own folder.
-          pathname: `${userId}/${pathname}`,
-          maximumSizeInBytes: 500 * 1024 * 1024,
-          tokenPayload: JSON.stringify({userId}),
+          // --- THE DEFINITIVE FIX ---
+          // Use the library's built-in option to guarantee uniqueness.
+          // This will automatically append a random suffix to the filename.
+          // e.g., "MyFile.mp4" becomes "MyFile-aB1cDef.mp4"
+          addRandomSuffix: true,
+
+          // We also ensure the file is placed inside the user's folder.
+          pathname: `${securePathPrefix}${clientPathname}`,
+          // --- END FIX ---
+
+          tokenPayload: JSON.stringify({
+            userId: userId,
+            originalFilename: clientPathname,
+          }),
         };
       },
-      onUploadCompleted: async ({tokenPayload}) => {
-        console.log("Upload completed. Custom token payload:", tokenPayload);
+      onUploadCompleted: async ({blob, tokenPayload}) => {
+        console.log("Blob upload completed:", blob.pathname);
+        console.log("Token payload:", tokenPayload);
       },
     });
 

@@ -23,6 +23,7 @@
       "@/components/*": ["app/components/*"],
       "@/lib/*": ["app/lib/*"],
       "@/actions/*": ["app/actions/*"],
+      "@/inngest/*": ["app/inngest/*"],
       "@/*": ["./*"]
     }
   },

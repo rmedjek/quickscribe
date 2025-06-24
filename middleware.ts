@@ -1,25 +1,36 @@
+// File: middleware.ts
+
 import {auth} from "@/lib/auth";
+import {NextResponse} from "next/server";
 
-// This is the middleware function that will be executed for every request.
 export default auth((req) => {
-  // If the user is not authenticated and the requested path is not the sign-in page,
-  // redirect them to the sign-in page.
-  if (!req.auth && req.nextUrl.pathname !== "/signin") {
-    const newUrl = new URL("/signin", req.nextUrl.origin);
-    return Response.redirect(newUrl);
+  const {pathname} = req.nextUrl;
+
+  // This check will now execute correctly because the matcher below allows it to.
+  if (pathname.startsWith("/api/inngest")) {
+    // If the request is for the Inngest API, do nothing and let it pass through untouched.
+    return NextResponse.next();
   }
 
-  // If the user IS authenticated and they try to visit the sign-in page,
-  // redirect them to the main application page.
-  if (req.auth && req.nextUrl.pathname === "/signin") {
-    const newUrl = new URL("/", req.nextUrl.origin);
-    return Response.redirect(newUrl);
+  // For all other requests, apply our authentication security rules.
+  const isLoggedIn = !!req.auth;
+
+  if (!isLoggedIn && pathname !== "/signin") {
+    return Response.redirect(new URL("/signin", req.nextUrl.origin));
   }
+
+  if (isLoggedIn && pathname === "/signin") {
+    return Response.redirect(new URL("/", req.nextUrl.origin));
+  }
+
+  // If none of the above conditions are met, allow the request to proceed.
+  return NextResponse.next();
 });
 
-// This config specifies which routes the middleware should apply to.
-// We are protecting all routes except for API routes, Next.js internal routes,
-// and static asset files.
+// --- THIS IS THE CRITICAL FIX ---
+// We have REMOVED `?!api` from the matcher.
+// The middleware will now run on all paths except for the ones listed,
+// which is what we need for our bypass logic to work.
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

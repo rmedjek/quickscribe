@@ -5,13 +5,16 @@ import {PrismaClient} from "@prisma/client";
 import {auth} from "@/lib/auth";
 import {revalidatePath} from "next/cache";
 import {TranscriptionMode} from "@/components/ConfirmationView";
-import {inngest} from "../api/inngest/route";
-// We will create this Inngest client file in the next step.
-// For now, this will show a TypeScript error, which is expected.
+
+// --- THIS IS THE CRITICAL FIX ---
+// We now import the single, correct, typed client from its dedicated file.
+import {inngest} from "@/inngest/client";
+// --- END FIX ---
 
 const prisma = new PrismaClient();
 
-// --- Action for FILE UPLOADS ---
+// The rest of this file is correct, but the import above fixes the core issue.
+
 interface StartFileJobParams {
   blobUrl: string;
   originalFileName: string;
@@ -44,13 +47,11 @@ export async function startTranscriptionJob(params: StartFileJobParams) {
       },
     });
 
-    // --- THIS IS THE NEW PART ---
-    // After creating the job, send an event to Inngest.
     await inngest.send({
       name: "transcription.requested",
       data: {
         jobId: newJob.id,
-        isLinkJob: false, // Flag to tell the worker this is a file job
+        isLinkJob: false,
       },
     });
 
@@ -65,7 +66,6 @@ export async function startTranscriptionJob(params: StartFileJobParams) {
   }
 }
 
-// --- Action for LINK SUBMISSIONS ---
 interface StartLinkJobParams {
   linkUrl: string;
   transcriptionMode: TranscriptionMode;
@@ -93,13 +93,11 @@ export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
       },
     });
 
-    // --- THIS IS THE NEW PART ---
-    // Send the same event, but flag it as a link job.
     await inngest.send({
       name: "transcription.requested",
       data: {
         jobId: newJob.id,
-        isLinkJob: true, // This tells the worker to use the link processing logic
+        isLinkJob: true,
       },
     });
 
@@ -112,4 +110,22 @@ export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
     console.error("Error creating link transcription job:", error);
     return {success: false, error: "Failed to create job in database."};
   }
+}
+
+export async function getJobAction(jobId: string) {
+  const session = await auth();
+  const userId = session?.user?.id;
+
+  if (!userId) {
+    return null;
+  }
+
+  const job = await prisma.transcriptionJob.findFirst({
+    where: {
+      id: jobId,
+      userId: userId,
+    },
+  });
+
+  return job;
 }
