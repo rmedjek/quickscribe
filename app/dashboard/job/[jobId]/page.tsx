@@ -1,48 +1,45 @@
 // app/dashboard/job/[jobId]/page.tsx
-
 import {PrismaClient} from "@prisma/client";
 import {auth} from "@/lib/auth";
 import {redirect} from "next/navigation";
-import JobStatusClientPage from "./JobStatusClientPage";
+import JobLifecycleClientPage from "./JobLifecycleClientPage";
+import PageLayout from "@/components/PageLayout";
 
 const prisma = new PrismaClient();
 
-// --- THIS IS THE DEFINITIVE FIX for the server-side error ---
-// We destructure `params` directly in the function signature. This is the
-// officially documented and correct way to access dynamic route parameters
-// in an async Server Component, which solves the rendering lifecycle error.
-export default async function JobStatusPage({
-  params,
-}: {
-  params: {jobId: string};
-}) {
-  const {jobId} = params;
-  const session = await auth();
-  const userId = session?.user?.id;
+// The props for a dynamic Server Component page
+interface JobPageProps {
+  params: {
+    jobId: string;
+  };
+}
 
-  if (!userId) {
+export default async function JobPage({params}: JobPageProps) {
+  // Destructure after an await or when directly used.
+  const session = await auth();
+  if (!session?.user?.id) {
     redirect("/signin");
   }
 
+  // Use params.jobId directly here
   const job = await prisma.transcriptionJob.findFirst({
     where: {
-      id: jobId,
-      userId: userId,
+      id: params.jobId,
+      userId: session.user.id,
     },
   });
-  // --- END FIX ---
 
   if (!job) {
     return (
-      <div className="text-center p-8">
-        <h1 className="text-2xl font-bold text-red-500">Job Not Found</h1>
-        <p className="text-slate-500">
-          The requested transcription job does not exist or you do not have
-          permission to view it.
-        </p>
-      </div>
+      <PageLayout>
+        <div>Job not found or you do not have permission to view it.</div>
+      </PageLayout>
     );
   }
 
-  return <JobStatusClientPage initialJob={job} />;
+  return (
+    <PageLayout>
+      <JobLifecycleClientPage initialJob={job} />
+    </PageLayout>
+  );
 }

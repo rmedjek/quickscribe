@@ -1,36 +1,31 @@
-// File: middleware.ts
-
-import {auth} from "@/lib/auth";
+// middleware.ts
 import {NextResponse} from "next/server";
+import {auth} from "@/lib/auth"; // Assuming this is your NextAuth config
 
 export default auth((req) => {
   const {pathname} = req.nextUrl;
 
-  // This check will now execute correctly because the matcher below allows it to.
+  // Allow all requests to the Inngest API route to pass through *without* authentication.
+  // This MUST come before any auth checks.
   if (pathname.startsWith("/api/inngest")) {
-    // If the request is for the Inngest API, do nothing and let it pass through untouched.
     return NextResponse.next();
   }
 
-  // For all other requests, apply our authentication security rules.
-  const isLoggedIn = !!req.auth;
-
-  if (!isLoggedIn && pathname !== "/signin") {
-    return Response.redirect(new URL("/signin", req.nextUrl.origin));
+  // If not trying to access the sign-in page, and not authenticated, redirect to sign-in.
+  if (pathname !== "/signin" && !req.auth) {
+    return NextResponse.redirect(new URL("/signin", req.url));
   }
 
-  if (isLoggedIn && pathname === "/signin") {
-    return Response.redirect(new URL("/", req.nextUrl.origin));
+  // If authenticated and trying to access sign-in, redirect to dashboard or home.
+  if (pathname === "/signin" && req.auth) {
+    return NextResponse.redirect(new URL("/", req.url));
   }
 
-  // If none of the above conditions are met, allow the request to proceed.
+  // For all other cases, allow the request.
   return NextResponse.next();
 });
 
-// --- THIS IS THE CRITICAL FIX ---
-// We have REMOVED `?!api` from the matcher.
-// The middleware will now run on all paths except for the ones listed,
-// which is what we need for our bypass logic to work.
+// The matcher should apply to all routes except for static assets and Next.js internals.
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

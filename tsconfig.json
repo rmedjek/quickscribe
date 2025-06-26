@@ -24,6 +24,7 @@
       "@/lib/*": ["app/lib/*"],
       "@/actions/*": ["app/actions/*"],
       "@/inngest/*": ["app/inngest/*"],
+      "@/hooks/*": ["app/hooks/*"],
       "@/*": ["./*"]
     }
   },

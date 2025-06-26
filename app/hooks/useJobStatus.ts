@@ -3,45 +3,26 @@
 
 import {useState, useEffect, useCallback} from "react";
 import type {TranscriptionJob} from "@prisma/client";
+import {getJobAction} from "@/actions/jobActions";
 
-export function useJobStatus(
-  initialJob: TranscriptionJob,
-  getJobAction: (jobId: string) => Promise<TranscriptionJob | null>
-) {
-  const [job, setJob] = useState<TranscriptionJob>(initialJob);
+export function useJobStatus(initialJob: TranscriptionJob) {
+  const [job, setJob] = useState(initialJob);
 
-  const [pollInterval, setPollInterval] = useState<number | null>(
-    job.status === "PENDING" || job.status === "PROCESSING" ? 2000 : null
-  );
+  const shouldPoll = job.status === "PENDING" || job.status === "PROCESSING";
 
   const poll = useCallback(async () => {
-    if (!job.id) return;
-    try {
-      const updatedJob = await getJobAction(job.id);
-      if (updatedJob) {
-        setJob(updatedJob);
-        if (
-          updatedJob.status === "COMPLETED" ||
-          updatedJob.status === "FAILED"
-        ) {
-          setPollInterval(null);
-        } else {
-          setPollInterval((prev) =>
-            prev ? Math.min(prev * 1.5, 30000) : null
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Failed to poll for job status:", error);
-      setPollInterval(null);
+    const updatedJob = await getJobAction(job.id);
+    if (updatedJob) {
+      setJob(updatedJob);
     }
-  }, [job.id, getJobAction]);
+  }, [job.id]);
 
   useEffect(() => {
-    if (pollInterval === null) return;
-    const intervalId = setInterval(poll, pollInterval);
+    if (!shouldPoll) return;
+
+    const intervalId = setInterval(poll, 3000); // Simple 3-second poll
     return () => clearInterval(intervalId);
-  }, [pollInterval, poll]);
+  }, [shouldPoll, poll]);
 
   return job;
 }

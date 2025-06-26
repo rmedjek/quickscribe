@@ -29,8 +29,7 @@ const nextConfig: NextConfig = {
   },
 
   webpack(config, {isServer}) {
-    // --- THIS IS THE FIX ---
-    // We configure webpack to ignore these specific warnings from Sentry's auto-instrumentation.
+    // configure webpack to ignore these specific warnings from Sentry's auto-instrumentation.
     // This is safe because we know they are expected and not actual errors.
     if (isServer) {
       config.ignoreWarnings = [
