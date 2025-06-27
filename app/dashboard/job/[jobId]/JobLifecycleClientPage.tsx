@@ -4,11 +4,11 @@
 import type {TranscriptionJob} from "@prisma/client";
 import {useRouter} from "next/navigation";
 import {useJobStatus} from "@/hooks/useJobStatus";
-import ProcessingView, {StageDisplayData} from "@/components/ProcessingView";
+import ProcessingView from "@/components/ProcessingView";
 import ResultsView from "@/components/ResultsView";
-import {APP_STEPS} from "@/types/app"; // Import StageDisplayData
+import {APP_STEPS} from "@/types/app";
 import type {TranscriptionMode} from "@/components/ConfirmationView";
-import {useEffect} from "react";
+import {useEffect, useMemo} from "react";
 import {useStepper} from "@/app/contexts/StepperContext";
 
 export default function JobLifecycleClientPage({
@@ -18,9 +18,8 @@ export default function JobLifecycleClientPage({
 }) {
   const router = useRouter();
   const job = useJobStatus(initialJob);
-  const {setStep, step} = useStepper(); // Get stepper context
+  const {setStep, step} = useStepper();
 
-  // Update stepper based on job status
   useEffect(() => {
     if (job.status === "PENDING" || job.status === "PROCESSING") {
       setStep("process");
@@ -29,37 +28,57 @@ export default function JobLifecycleClientPage({
     }
   }, [job.status, setStep]);
 
-  if (!job) return <div>Loading Job Details...</div>; // Should not happen if initialJob is always passed
+  // Determine the active stage and overall message based on job status
+  const {activeProcessingStage, overallStatusMessage} = useMemo(() => {
+    if (!job)
+      return {
+        activeProcessingStage: null,
+        overallStatusMessage: "Loading job details...",
+      };
+
+    switch (job.status) {
+      case "PENDING":
+        return {
+          activeProcessingStage: {
+            name: "queue",
+            label: "Job Queued",
+            progress: 0,
+            isActive: true,
+            isIndeterminate: true,
+            subText: "Waiting for an available worker...",
+          },
+          overallStatusMessage: "Your transcription is in the queue",
+        };
+      case "PROCESSING":
+        return {
+          activeProcessingStage: {
+            name: "transcribing",
+            label: "Transcribing Media",
+            progress: 0,
+            isActive: true,
+            isIndeterminate: true,
+            subText: "This may take a few minutes...",
+          },
+          overallStatusMessage: "Your transcription is in progress",
+        };
+      default:
+        return {
+          activeProcessingStage: null,
+          overallStatusMessage: "Loading...",
+        };
+    }
+  }, [job]);
+
+  if (!job)
+    return <div className="text-center p-8">Loading Job Details...</div>;
 
   if (job.status === "PENDING" || job.status === "PROCESSING") {
-    const processingStages: StageDisplayData[] = [
-      {
-        name: "queue",
-        label: "Job Queued",
-        progress: job.status === "PENDING" ? 0 : 1,
-        isActive: job.status === "PENDING",
-        isComplete: job.status !== "PENDING",
-        isIndeterminate: job.status === "PENDING",
-      },
-      {
-        name: "transcribing",
-        label: "Transcribing Media",
-        progress: 0,
-        isActive: job.status === "PROCESSING",
-        isComplete: false,
-        isIndeterminate: job.status === "PROCESSING",
-      },
-    ];
     return (
       <ProcessingView
-        stages={processingStages}
-        currentOverallStatusMessage={
-          job.status === "PENDING"
-            ? "Your job is in the queue..."
-            : "Processing your media..."
-        }
+        activeStage={activeProcessingStage}
+        currentOverallStatusMessage={overallStatusMessage}
         appSteps={APP_STEPS}
-        currentAppStepId={step} // Use step from context
+        currentAppStepId={step}
       />
     );
   }
@@ -85,12 +104,23 @@ export default function JobLifecycleClientPage({
 
   if (job.status === "FAILED") {
     return (
-      <div className="text-red-500 text-center p-8">
-        <h2>Transcription Failed</h2>
-        <p>{job.errorMessage || "An unknown error occurred."}</p>
+      <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-xl w-full max-w-lg mx-auto text-center">
+        <h2 className="text-2xl font-bold text-red-500 dark:text-red-400 mb-4">
+          Transcription Failed
+        </h2>
+        <p className="text-slate-600 dark:text-slate-300 mb-6">
+          Unfortunately, we encountered an error.
+        </p>
+        {job.errorMessage && (
+          <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-md text-red-700 dark:text-red-200 text-sm text-left mb-6">
+            <p>
+              <strong>Error Details:</strong> {job.errorMessage}
+            </p>
+          </div>
+        )}
         <button
           onClick={() => router.push("/")}
-          className="mt-4 px-4 py-2 bg-slate-200 rounded"
+          className="mt-4 px-6 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 font-semibold"
         >
           New Transcription
         </button>
@@ -98,5 +128,5 @@ export default function JobLifecycleClientPage({
     );
   }
 
-  return <div>Loading job status...</div>;
+  return <div className="text-center p-8">Loading job status...</div>;
 }

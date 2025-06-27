@@ -10,24 +10,25 @@ import {
   startLinkTranscriptionJob,
 } from "@/actions/jobActions";
 import {calculateFileHash} from "@/lib/hash-utils";
-import {type SelectedInputType, APP_STEPS} from "@/types/app";
+import {
+  type SelectedInputType,
+  APP_STEPS,
+  type StageDisplayData,
+} from "@/types/app";
 import PageLayout from "@/components/PageLayout";
 import InputSelectionView from "@/components/InputSelectionView";
 import ConfirmationView, {
   TranscriptionMode,
 } from "@/components/ConfirmationView";
-import ProcessingView, {StageDisplayData} from "@/components/ProcessingView";
+import ProcessingView from "@/components/ProcessingView";
 import {StepperProvider, useStepper} from "./contexts/StepperContext";
 
 enum ViewState {
   SelectingInput,
   ConfirmingInput,
-  Submitting, // This state will use the ProcessingView
+  Submitting,
   Error,
 }
-
-const UPLOAD_STAGE_NAME = "upload";
-const CREATE_JOB_STAGE_NAME = "create_job";
 
 function HomePageInner() {
   const {setStep, step} = useStepper();
@@ -42,21 +43,12 @@ function HomePageInner() {
     useState<SelectedInputType | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [isSubmittingJob, setIsSubmittingJob] = useState(false); // Tracks the overall submission
-  const [submissionStages, setSubmissionStages] = useState<StageDisplayData[]>(
-    []
-  );
+  const [isSubmittingJob, setIsSubmittingJob] = useState(false);
+  // NEW: State for the single active stage during submission
+  const [activeSubmissionStage, setActiveSubmissionStage] =
+    useState<StageDisplayData | null>(null);
   const [currentSubmissionStatusText, setCurrentSubmissionStatusText] =
     useState("");
-
-  const updateSubmissionStage = useCallback(
-    (name: string, partial: Partial<StageDisplayData>) => {
-      setSubmissionStages((prev) =>
-        prev.map((s) => (s.name === name ? {...s, ...partial} : s))
-      );
-    },
-    []
-  );
 
   const handleFileSelected = (file: File) => {
     setSelectedFile(file);
@@ -77,30 +69,21 @@ function HomePageInner() {
   const handleConfirmation = async (mode: TranscriptionMode) => {
     setIsSubmittingJob(true);
     setCurrentView(ViewState.Submitting);
-    setStep("process"); // Set stepper to "Process Audio"
+    setStep("process");
     setErrorMessage(null);
 
     let result: {success: boolean; jobId?: string; error?: string};
 
     if (selectedFile) {
-      setCurrentSubmissionStatusText("Preparing your file for upload...");
-      setSubmissionStages([
-        {
-          name: UPLOAD_STAGE_NAME,
-          label: "Uploading File",
-          progress: 0,
-          isActive: true,
-          isIndeterminate: false,
-          subText: "0%",
-        },
-        {
-          name: CREATE_JOB_STAGE_NAME,
-          label: "Creating Job Record",
-          progress: 0,
-          isActive: false,
-          isIndeterminate: true,
-        }, // Will become determinate
-      ]);
+      setCurrentSubmissionStatusText("Preparing your file...");
+      setActiveSubmissionStage({
+        name: "upload",
+        label: "Uploading File",
+        progress: 0,
+        isActive: true,
+        isIndeterminate: false,
+        subText: "0%",
+      });
 
       try {
         const uploadResult = await upload(selectedFile.name, selectedFile, {
@@ -108,38 +91,32 @@ function HomePageInner() {
           handleUploadUrl: "/api/client-upload",
           onUploadProgress: (progressEvent) => {
             const percent = Math.round(progressEvent.percentage);
-            updateSubmissionStage(UPLOAD_STAGE_NAME, {
-              progress: percent / 100,
-              subText: `${percent}%`,
-            });
+            setActiveSubmissionStage((prev: any) =>
+              prev
+                ? {...prev, progress: percent / 100, subText: `${percent}%`}
+                : null
+            );
           },
         });
 
-        updateSubmissionStage(UPLOAD_STAGE_NAME, {
+        setActiveSubmissionStage({
+          name: "upload",
+          label: "File Uploaded Successfully",
           progress: 1,
           isActive: false,
           isComplete: true,
-          label: "File Uploaded Successfully",
           subText: "100%",
         });
 
         setCurrentSubmissionStatusText("Finalizing your transcription job...");
-        updateSubmissionStage(CREATE_JOB_STAGE_NAME, {
+        setActiveSubmissionStage({
+          name: "create_job",
+          label: "Creating Job Record",
+          progress: 0,
           isActive: true,
-          isIndeterminate: false,
-          progress: 0.1,
+          isIndeterminate: true,
           subText: "Sending to server...",
         });
-
-        const finalizeInterval = setInterval(() => {
-          setSubmissionStages((prev) =>
-            prev.map((s) =>
-              s.name === CREATE_JOB_STAGE_NAME
-                ? {...s, progress: Math.min(s.progress + 0.2, 0.9)}
-                : s
-            )
-          );
-        }, 150); // Animate progress for this short step
 
         const fileHash = await calculateFileHash(selectedFile);
         result = await startTranscriptionJob({
@@ -149,7 +126,6 @@ function HomePageInner() {
           fileHash,
           transcriptionMode: mode,
         });
-        clearInterval(finalizeInterval);
       } catch (uploadError: any) {
         setErrorMessage(
           `Upload Error: ${uploadError.message || "Failed to upload file."}`
@@ -159,32 +135,20 @@ function HomePageInner() {
         return;
       }
     } else if (submittedLink) {
-      setCurrentSubmissionStatusText("Creating your transcription job...");
-      setSubmissionStages([
-        {
-          name: CREATE_JOB_STAGE_NAME,
-          label: "Creating Job Record",
-          progress: 0,
-          isActive: true,
-          isIndeterminate: false,
-          subText: "Sending to server...",
-        },
-      ]);
-      const finalizeInterval = setInterval(() => {
-        setSubmissionStages((prev) =>
-          prev.map((s) =>
-            s.name === CREATE_JOB_STAGE_NAME
-              ? {...s, progress: Math.min(s.progress + 0.2, 0.9)}
-              : s
-          )
-        );
-      }, 150);
+      setCurrentSubmissionStatusText("Submitting your link...");
+      setActiveSubmissionStage({
+        name: "create_job",
+        label: "Creating Job Record",
+        progress: 0,
+        isActive: true,
+        isIndeterminate: true,
+        subText: "Sending to server...",
+      });
 
       result = await startLinkTranscriptionJob({
         linkUrl: submittedLink,
         transcriptionMode: mode,
       });
-      clearInterval(finalizeInterval);
     } else {
       setErrorMessage("No file or link selected.");
       setCurrentView(ViewState.Error);
@@ -193,17 +157,19 @@ function HomePageInner() {
     }
 
     if (result.success && result.jobId) {
-      updateSubmissionStage(CREATE_JOB_STAGE_NAME, {
-        progress: 1,
-        isActive: false,
-        isComplete: true,
-        label: "Job Created",
-        subText: "100%",
-      });
-      setCurrentSubmissionStatusText(
-        "Job submitted! Redirecting to your dashboard..."
+      setActiveSubmissionStage((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              progress: 1,
+              isActive: false,
+              isComplete: true,
+              label: "Job Created",
+            }
+          : null
       );
-      setTimeout(() => router.push(`/dashboard/job/${result.jobId}`), 1200);
+      setCurrentSubmissionStatusText("Job submitted! Redirecting...");
+      setTimeout(() => router.push(`/dashboard/job/${result.jobId}`), 1000);
     } else {
       setErrorMessage(
         result.error || "Server failed to create the job record."
@@ -220,6 +186,7 @@ function HomePageInner() {
     setStep("configure");
     setErrorMessage(null);
     setIsSubmittingJob(false);
+    setActiveSubmissionStage(null);
   }, [setStep]);
 
   if (errorMessage) {
@@ -255,7 +222,7 @@ function HomePageInner() {
           file={selectedFile}
           link={submittedLink}
           inputType={selectedInputType}
-          onConfirm={(path, mode) => handleConfirmation(mode)} // Path is ignored now
+          onConfirm={(path, mode) => handleConfirmation(mode)}
           onCancel={resetToStart}
           isSubmitting={isSubmittingJob}
         />
@@ -263,7 +230,7 @@ function HomePageInner() {
     case ViewState.Submitting:
       return (
         <ProcessingView
-          stages={submissionStages}
+          activeStage={activeSubmissionStage}
           currentOverallStatusMessage={currentSubmissionStatusText}
           appSteps={APP_STEPS}
           currentAppStepId={step}

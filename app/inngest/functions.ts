@@ -1,15 +1,28 @@
 // app/inngest/functions.ts
-
 import {inngest} from "./client";
 import {PrismaClient} from "@prisma/client";
 import {processFileFromBlob} from "@/lib/file-processor";
 import {processLink} from "@/lib/link-processor";
 import type {TranscriptionMode} from "@/components/ConfirmationView";
+import type {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction"; // Import the detailed result type
+import {del} from "@vercel/blob";
 
 const prisma = new PrismaClient();
 
+// Define the expected shape of our processing result for clarity
+type ProcessingResult = {
+  success: boolean;
+  data?: DetailedTranscriptionResult;
+  error?: string;
+};
+
 export const processTranscription = inngest.createFunction(
-  {id: "process-transcription-job"},
+  {
+    id: "process-transcription-job",
+    concurrency: {
+      limit: 5,
+    },
+  },
   {event: "transcription.requested"},
   async ({event, step}) => {
     const {jobId, isLinkJob} = event.data;
@@ -25,59 +38,80 @@ export const processTranscription = inngest.createFunction(
       throw new Error(`Job with ID ${jobId} not found.`);
     }
 
-    await step.run("update-job-status-to-processing", async () => {
-      await prisma.transcriptionJob.update({
-        where: {id: jobId},
-        data: {status: "PROCESSING", startedAt: new Date()},
-      });
-    });
+    let result: ProcessingResult;
 
-    const result = await step.run("process-media", async () => {
-      const mode = job.engineUsed as TranscriptionMode;
-      if (isLinkJob) {
-        return await processLink(job.fileUrl, mode);
-      } else {
-        return await processFileFromBlob(job.fileUrl, job.sourceFileName, mode);
-      }
-    });
-
-    if (result.success && result.data) {
-      // --- THIS IS THE FIX ---
-      // We assign result.data to a new constant. TypeScript knows this constant
-      // can't be undefined, and this knowledge is correctly carried into the
-      // inner async function's scope.
-      const transcriptionData = result.data;
-      // --- END FIX ---
-
-      await step.run("update-job-as-completed", async () => {
+    try {
+      await step.run("update-job-status-to-processing", async () => {
         await prisma.transcriptionJob.update({
           where: {id: jobId},
-          data: {
-            status: "COMPLETED",
-            completedAt: new Date(),
-            // Now we use the new constant, which is guaranteed to exist.
-            transcriptText: transcriptionData.text,
-            transcriptSrt: transcriptionData.srtContent,
-            transcriptVtt: transcriptionData.vttContent,
-            duration: transcriptionData.duration,
-            language: transcriptionData.language,
-          },
+          data: {status: "PROCESSING", startedAt: new Date()},
         });
       });
-      return {success: true, message: `Job ${jobId} completed successfully.`};
-    } else {
+
+      result = await step.run("process-media", async () => {
+        const mode = job.engineUsed as TranscriptionMode;
+        if (isLinkJob) {
+          return await processLink(job.fileUrl, mode);
+        } else {
+          return await processFileFromBlob(
+            job.fileUrl,
+            job.sourceFileName,
+            mode
+          );
+        }
+      });
+
+      if (result.success && result.data) {
+        const transcriptionData = result.data;
+        await step.run("update-job-as-completed", async () => {
+          await prisma.transcriptionJob.update({
+            where: {id: jobId},
+            data: {
+              status: "COMPLETED",
+              completedAt: new Date(),
+              transcriptText: transcriptionData.text,
+              transcriptSrt: transcriptionData.srtContent,
+              transcriptVtt: transcriptionData.vttContent,
+              duration: transcriptionData.duration,
+              language: transcriptionData.language,
+            },
+          });
+        });
+      } else {
+        throw new Error(
+          result.error || "Processing was successful but returned no data."
+        );
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
       await step.run("update-job-as-failed", async () => {
         await prisma.transcriptionJob.update({
           where: {id: jobId},
           data: {
             status: "FAILED",
             completedAt: new Date(),
-            errorMessage:
-              result.error || "An unknown processing error occurred.",
+            errorMessage: error.message || "An unknown error occurred.",
           },
         });
       });
-      throw new Error(result.error || `Processing failed for job ${jobId}`);
+      throw error;
+    } finally {
+      if (!isLinkJob && job.fileUrl) {
+        await step.run("delete-source-blob", async () => {
+          console.log(`[Inngest] Deleting source blob: ${job.fileUrl}`);
+          try {
+            await del(job.fileUrl);
+            console.log(`[Inngest] Successfully deleted blob: ${job.fileUrl}`);
+          } catch (delError: any) {
+            // Log the deletion error, but don't fail the entire Inngest run for it
+            console.error(
+              `[Inngest] Failed to delete blob ${job.fileUrl}. It may need manual cleanup. Error: ${delError.message}`
+            );
+          }
+        });
+      }
     }
+
+    return {success: true, message: `Job ${jobId} completed successfully.`};
   }
 );
