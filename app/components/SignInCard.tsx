@@ -41,15 +41,12 @@ export default function SignInCard() {
       <p className="mt-2 text-slate-600 dark:text-slate-300">
         Transcribe and chat with any video in minutes.
       </p>
-
       <div className="mt-8 space-y-4">
-        {/* --- THIS IS THE FIX --- */}
-        {/* We tell the signIn function to redirect to /dashboard on success. */}
         <StyledButton
           size="lg"
           className="w-full"
           variant="secondary"
-          onClick={() => signIn("google", {callbackUrl: "/dashboard"})}
+          onClick={() => signIn("google", {callbackUrl: "/"})}
         >
           <GoogleIcon />
           Continue with Google
@@ -58,14 +55,12 @@ export default function SignInCard() {
           size="lg"
           className="w-full"
           variant="secondary"
-          onClick={() => signIn("github", {callbackUrl: "/dashboard"})}
+          onClick={() => signIn("github", {callbackUrl: "/"})}
         >
           <Github className="mr-2 h-5 w-5" />
           Continue with GitHub
         </StyledButton>
-        {/* --- END FIX --- */}
       </div>
-
       <p className="mt-8 text-xs text-slate-500 dark:text-slate-400">
         By continuing, you agree to our (placeholder) Terms of Service and
         Privacy Policy. We never store your passwords.

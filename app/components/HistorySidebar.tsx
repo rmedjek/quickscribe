@@ -6,7 +6,7 @@ import {usePathname} from "next/navigation";
 import {useState} from "react";
 import type {TranscriptionJob} from "@prisma/client";
 import {Plus, ChevronLeft, FileText, Link2} from "lucide-react";
-import clsx from "clsx"; // A utility for constructing class names
+import clsx from "clsx";
 
 export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -55,12 +55,11 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
         </Link>
       </div>
 
-      {/* Scrollable list of jobs */}
       <div className="flex-1 overflow-y-auto px-2 space-y-1">
         {jobs.map((job) => {
           const isActive = pathname.endsWith(job.id);
           return (
-            <Link key={job.id} href={`/dashboard/job/${job.id}`} passHref>
+            <Link key={job.id} href={`/job/${job.id}`} passHref>
               <div
                 title={job.sourceFileName}
                 className={clsx(
