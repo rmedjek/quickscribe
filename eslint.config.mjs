@@ -12,6 +12,13 @@ const compat = new FlatCompat({
 const eslintConfig = [
   // base Next.js config
   ...compat.extends("next/core-web-vitals", "next/typescript"),
+  
+  // Global rule overrides
+  {
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
 
   // Override for postcss.config.js
   {

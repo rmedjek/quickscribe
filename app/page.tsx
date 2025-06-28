@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/page.tsx
 "use client";
 
@@ -44,11 +43,8 @@ function HomePageInner() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [isSubmittingJob, setIsSubmittingJob] = useState(false);
-  // NEW: State for the single active stage during submission
-  const [activeSubmissionStage, setActiveSubmissionStage] =
-    useState<StageDisplayData | null>(null);
-  const [currentSubmissionStatusText, setCurrentSubmissionStatusText] =
-    useState("");
+  const [activeStage, setActiveStage] = useState<StageDisplayData | null>(null);
+  const [overallStatusText, setOverallStatusText] = useState("");
 
   const handleFileSelected = (file: File) => {
     setSelectedFile(file);
@@ -74,24 +70,24 @@ function HomePageInner() {
 
     let result: {success: boolean; jobId?: string; error?: string};
 
-    if (selectedFile) {
-      setCurrentSubmissionStatusText("Preparing your file...");
-      setActiveSubmissionStage({
-        name: "upload",
-        label: "Uploading File",
-        progress: 0,
-        isActive: true,
-        isIndeterminate: false,
-        subText: "0%",
-      });
+    try {
+      if (selectedFile) {
+        setOverallStatusText("Uploading your file...");
+        setActiveStage({
+          name: "upload",
+          label: "Upload Progress",
+          progress: 0,
+          isActive: true,
+          isIndeterminate: false,
+          subText: "0%",
+        });
 
-      try {
         const uploadResult = await upload(selectedFile.name, selectedFile, {
           access: "public",
           handleUploadUrl: "/api/client-upload",
           onUploadProgress: (progressEvent) => {
             const percent = Math.round(progressEvent.percentage);
-            setActiveSubmissionStage((prev: any) =>
+            setActiveStage((prev) =>
               prev
                 ? {...prev, progress: percent / 100, subText: `${percent}%`}
                 : null
@@ -99,23 +95,13 @@ function HomePageInner() {
           },
         });
 
-        setActiveSubmissionStage({
-          name: "upload",
-          label: "File Uploaded Successfully",
-          progress: 1,
-          isActive: false,
-          isComplete: true,
-          subText: "100%",
-        });
-
-        setCurrentSubmissionStatusText("Finalizing your transcription job...");
-        setActiveSubmissionStage({
+        setOverallStatusText("Finalizing your job...");
+        setActiveStage({
           name: "create_job",
           label: "Creating Job Record",
           progress: 0,
           isActive: true,
           isIndeterminate: true,
-          subText: "Sending to server...",
         });
 
         const fileHash = await calculateFileHash(selectedFile);
@@ -126,54 +112,40 @@ function HomePageInner() {
           fileHash,
           transcriptionMode: mode,
         });
-      } catch (uploadError: any) {
-        setErrorMessage(
-          `Upload Error: ${uploadError.message || "Failed to upload file."}`
-        );
-        setCurrentView(ViewState.Error);
-        setIsSubmittingJob(false);
-        return;
+      } else if (submittedLink) {
+        setOverallStatusText("Creating your job...");
+        setActiveStage({
+          name: "create_job",
+          label: "Sending to Server",
+          progress: 0,
+          isActive: true,
+          isIndeterminate: true,
+        });
+        result = await startLinkTranscriptionJob({
+          linkUrl: submittedLink,
+          transcriptionMode: mode,
+        });
+      } else {
+        throw new Error("No file or link selected.");
       }
-    } else if (submittedLink) {
-      setCurrentSubmissionStatusText("Submitting your link...");
-      setActiveSubmissionStage({
-        name: "create_job",
-        label: "Creating Job Record",
-        progress: 0,
-        isActive: true,
-        isIndeterminate: true,
-        subText: "Sending to server...",
-      });
 
-      result = await startLinkTranscriptionJob({
-        linkUrl: submittedLink,
-        transcriptionMode: mode,
-      });
-    } else {
-      setErrorMessage("No file or link selected.");
-      setCurrentView(ViewState.Error);
-      setIsSubmittingJob(false);
-      return;
-    }
-
-    if (result.success && result.jobId) {
-      setActiveSubmissionStage((prev: any) =>
-        prev
-          ? {
-              ...prev,
-              progress: 1,
-              isActive: false,
-              isComplete: true,
-              label: "Job Created",
-            }
-          : null
-      );
-      setCurrentSubmissionStatusText("Job submitted! Redirecting...");
-      setTimeout(() => router.push(`/dashboard/job/${result.jobId}`), 1000);
-    } else {
-      setErrorMessage(
-        result.error || "Server failed to create the job record."
-      );
+      if (result.success && result.jobId) {
+        setOverallStatusText("Job created! Redirecting...");
+        setActiveStage((prev) =>
+          prev
+            ? {...prev, isComplete: true, isIndeterminate: false, progress: 1}
+            : null
+        );
+        setTimeout(() => router.push(`/dashboard/job/${result.jobId}`), 500);
+      } else {
+        throw new Error(result.error || "Server failed to create the job.");
+      }
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "An unknown submission error occurred.";
+      setErrorMessage(msg);
       setCurrentView(ViewState.Error);
       setIsSubmittingJob(false);
     }
@@ -186,7 +158,6 @@ function HomePageInner() {
     setStep("configure");
     setErrorMessage(null);
     setIsSubmittingJob(false);
-    setActiveSubmissionStage(null);
   }, [setStep]);
 
   if (errorMessage) {
@@ -230,8 +201,8 @@ function HomePageInner() {
     case ViewState.Submitting:
       return (
         <ProcessingView
-          activeStage={activeSubmissionStage}
-          currentOverallStatusMessage={currentSubmissionStatusText}
+          activeStage={activeStage}
+          currentOverallStatusMessage={overallStatusText}
           appSteps={APP_STEPS}
           currentAppStepId={step}
         />

@@ -1,14 +1,16 @@
-// File: app/lib/auth.ts
-import {PrismaAdapter} from "@auth/prisma-adapter";
+// lib/auth.ts
 import NextAuth from "next-auth";
-import GitHub from "next-auth/providers/github";
-import Google from "next-auth/providers/google";
+import {PrismaAdapter} from "@auth/prisma-adapter";
 import {PrismaClient} from "@prisma/client";
+import Google from "next-auth/providers/google";
+import GitHub from "next-auth/providers/github";
 import type {Adapter} from "next-auth/adapters";
+import {authConfig} from "@/auth.config";
 
 const prisma = new PrismaClient();
 
 export const {handlers, auth, signIn, signOut} = NextAuth({
+  ...authConfig, // Spread the base config here
   adapter: PrismaAdapter(prisma) as Adapter,
   providers: [
     Google({
@@ -23,14 +25,8 @@ export const {handlers, auth, signIn, signOut} = NextAuth({
   session: {
     strategy: "jwt",
   },
-  // --- THIS IS THE NEW SECTION ---
-  pages: {
-    signIn: "/signin", // Tells Auth.js to use our custom sign-in page
-    // You can also add custom pages for error, signout, etc.
-    // error: '/auth/error',
-  },
-  // --- END NEW SECTION ---
   callbacks: {
+    ...authConfig.callbacks, // Include the authorized callback
     async jwt({token, user}) {
       if (user) {
         token.id = user.id;

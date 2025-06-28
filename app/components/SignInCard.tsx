@@ -1,10 +1,10 @@
+// app/components/SignInCard.tsx
 "use client";
 
 import {signIn} from "next-auth/react";
 import StyledButton from "./StyledButton";
 import {Github, Sparkles} from "lucide-react";
 
-// Simple component for the Google icon SVG
 const GoogleIcon = () => (
   <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
     <path
@@ -29,7 +29,6 @@ const GoogleIcon = () => (
 
 export default function SignInCard() {
   return (
-    // Card container with glassmorphism effect
     <div
       role="dialog"
       aria-modal="true"
@@ -44,11 +43,13 @@ export default function SignInCard() {
       </p>
 
       <div className="mt-8 space-y-4">
+        {/* --- THIS IS THE FIX --- */}
+        {/* We tell the signIn function to redirect to /dashboard on success. */}
         <StyledButton
           size="lg"
           className="w-full"
           variant="secondary"
-          onClick={() => signIn("google", {callbackUrl: "/"})}
+          onClick={() => signIn("google", {callbackUrl: "/dashboard"})}
         >
           <GoogleIcon />
           Continue with Google
@@ -57,11 +58,12 @@ export default function SignInCard() {
           size="lg"
           className="w-full"
           variant="secondary"
-          onClick={() => signIn("github", {callbackUrl: "/"})}
+          onClick={() => signIn("github", {callbackUrl: "/dashboard"})}
         >
           <Github className="mr-2 h-5 w-5" />
           Continue with GitHub
         </StyledButton>
+        {/* --- END FIX --- */}
       </div>
 
       <p className="mt-8 text-xs text-slate-500 dark:text-slate-400">

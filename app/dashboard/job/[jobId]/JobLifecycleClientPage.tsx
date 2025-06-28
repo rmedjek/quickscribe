@@ -28,14 +28,9 @@ export default function JobLifecycleClientPage({
     }
   }, [job.status, setStep]);
 
-  // Determine the active stage and overall message based on job status
   const {activeProcessingStage, overallStatusMessage} = useMemo(() => {
     if (!job)
-      return {
-        activeProcessingStage: null,
-        overallStatusMessage: "Loading job details...",
-      };
-
+      return {activeProcessingStage: null, overallStatusMessage: "Loading..."};
     switch (job.status) {
       case "PENDING":
         return {
@@ -45,7 +40,6 @@ export default function JobLifecycleClientPage({
             progress: 0,
             isActive: true,
             isIndeterminate: true,
-            subText: "Waiting for an available worker...",
           },
           overallStatusMessage: "Your transcription is in the queue",
         };
@@ -62,15 +56,9 @@ export default function JobLifecycleClientPage({
           overallStatusMessage: "Your transcription is in progress",
         };
       default:
-        return {
-          activeProcessingStage: null,
-          overallStatusMessage: "Loading...",
-        };
+        return {activeProcessingStage: null, overallStatusMessage: ""};
     }
   }, [job]);
-
-  if (!job)
-    return <div className="text-center p-8">Loading Job Details...</div>;
 
   if (job.status === "PENDING" || job.status === "PROCESSING") {
     return (
@@ -104,29 +92,13 @@ export default function JobLifecycleClientPage({
 
   if (job.status === "FAILED") {
     return (
-      <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-xl w-full max-w-lg mx-auto text-center">
-        <h2 className="text-2xl font-bold text-red-500 dark:text-red-400 mb-4">
-          Transcription Failed
-        </h2>
-        <p className="text-slate-600 dark:text-slate-300 mb-6">
-          Unfortunately, we encountered an error.
-        </p>
-        {job.errorMessage && (
-          <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-md text-red-700 dark:text-red-200 text-sm text-left mb-6">
-            <p>
-              <strong>Error Details:</strong> {job.errorMessage}
-            </p>
-          </div>
-        )}
-        <button
-          onClick={() => router.push("/")}
-          className="mt-4 px-6 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 font-semibold"
-        >
-          New Transcription
-        </button>
+      <div className="text-red-500 text-center p-8">
+        <h2>Transcription Failed</h2>
+        <p>{job.errorMessage || "An unknown error occurred."}</p>
+        <button onClick={() => router.push("/")}>New Transcription</button>
       </div>
     );
   }
 
-  return <div className="text-center p-8">Loading job status...</div>;
+  return <div>Loading job status...</div>;
 }
