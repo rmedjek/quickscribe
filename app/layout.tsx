@@ -1,6 +1,6 @@
 // app/layout.tsx
 import {Inter} from "next/font/google";
-import "../styles/global.css";
+import "../styles/global.css"; // The global CSS import belongs HERE.
 import {ThemeProvider} from "./contexts/ThemeContext";
 import SessionProvider from "./components/SessionProvider";
 import {auth} from "@/lib/auth";
@@ -39,13 +39,11 @@ export default async function RootLayout({
                 <>
                   <HistorySidebar jobs={jobs} />
                   <main className="flex-1 flex flex-col h-screen">
-                    {/* The page content ({children}) will render here */}
                     {children}
                   </main>
                 </>
               ) : (
-                // For guests, render the sign-in page directly without the shell
-                children
+                <main className="w-full h-full">{children}</main>
               )}
             </div>
           </ThemeProvider>

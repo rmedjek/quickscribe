@@ -2,11 +2,9 @@
 import {PrismaClient} from "@prisma/client";
 import {auth} from "@/lib/auth";
 import {redirect} from "next/navigation";
-import PageLayout from "@/components/PageLayout";
-import UserNav from "@/components/UserNav";
-import DarkModeToggle from "@/components/DarkModeToggle";
-import {StepperProvider} from "@/app/contexts/StepperContext";
 import JobLifecycleClientPage from "./JobLifecycleClientPage";
+import PageLayout from "@/components/PageLayout"; // We still use this for centering
+import {StepperProvider} from "@/app/contexts/StepperContext";
 
 const prisma = new PrismaClient();
 
@@ -22,22 +20,18 @@ export default async function JobPage({params}: {params: {jobId: string}}) {
   if (!job) {
     return (
       <PageLayout>
-        <div>Job not found.</div>
+        <div className="text-center p-8">
+          <h1 className="text-2xl font-bold text-red-500">Job Not Found</h1>
+        </div>
       </PageLayout>
     );
   }
 
   return (
-    <>
-      <header className="flex h-16 items-center justify-end gap-4 border-b bg-white dark:bg-slate-800/50 px-6 flex-shrink-0">
-        <UserNav />
-        <DarkModeToggle />
-      </header>
-      <PageLayout>
-        <StepperProvider>
-          <JobLifecycleClientPage initialJob={job} />
-        </StepperProvider>
-      </PageLayout>
-    </>
+    <PageLayout>
+      <StepperProvider>
+        <JobLifecycleClientPage initialJob={job} />
+      </StepperProvider>
+    </PageLayout>
   );
 }

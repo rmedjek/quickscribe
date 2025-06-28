@@ -29,6 +29,7 @@ import {
 import {APP_STEPS, TRANSCRIPTION_MODEL_DISPLAY_NAMES} from "@/types/app";
 import type {AppStep} from "@/types/app";
 import {AiResultCard, AiResultItem} from "./AiResultCard";
+import ProgressStepper from "./ProgressStepper";
 
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
 
@@ -353,32 +354,31 @@ export default function ResultsView({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700 dark:text-slate-200">
+    <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-4xl mx-auto text-slate-700 dark:text-slate-200">
       <div className="text-center mb-6">
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-50">
-          QuickScribe
+        {/* The GrayProgressStepper is correctly placed here */}
+        <GrayProgressStepper steps={APP_STEPS} />
+        <div className="flex justify-center my-6">
+          <CheckCircle2 size={64} className="text-green-500" />
+        </div>
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">
+          Transcript Generated Successfully!
         </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Powered by Groq
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+          Using <strong>{TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode]}</strong> mode.
         </p>
       </div>
-      <GrayProgressStepper steps={APP_STEPS} />
-      <div className="flex justify-center my-6">
-        <CheckCircle2 size={72} className="text-gray-500 dark:text-slate-400" />
-      </div>
-      <h2 className="text-center text-xl font-semibold text-slate-900 dark:text-slate-50 mb-6">
-        Transcripts generated successfully!
-      </h2>
+
       <div className="relative mb-8">
         <button
           onClick={copyText}
-          className="absolute right-3 top-3 p-1.5 rounded-md text-gray-600 dark:text-gray-300 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400 dark:focus-visible:ring-sky-400 dark:focus-visible:ring-offset-slate-800 transition"
+          className="absolute right-3 top-3 p-1.5 rounded-md text-gray-600 dark:text-gray-300 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400"
           title="Copy text"
         >
           <ClipboardCopy size={18} />
         </button>
         <span
-          className={`absolute right-0 -top-6 text-xs font-medium text-green-600 dark:text-green-400 transition-opacity duration-200 ${
+          className={`absolute right-0 -top-6 text-xs font-medium text-green-600 transition-opacity duration-200 ${
             copied ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -388,6 +388,7 @@ export default function ResultsView({
           {transcriptionData.text}
         </div>
       </div>
+
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <DownloadButton
           label="TXT"
@@ -414,6 +415,7 @@ export default function ResultsView({
           size="sm"
         />
       </div>
+
       <div className="flex justify-center mb-6">
         <StyledButton
           onClick={zipAll}
