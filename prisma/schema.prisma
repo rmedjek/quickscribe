@@ -39,6 +39,7 @@ model TranscriptionJob {
   transcriptText String? @db.Text
   transcriptSrt  String? @db.Text
   transcriptVtt  String? @db.Text
+  displayTitle   String? @db.Text
 
   // Metadata
   engineUsed   String  @default("groq")

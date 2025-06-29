@@ -172,3 +172,27 @@ export async function deleteJobAction(jobId: string) {
     return {success: false, error: "Failed to delete the job."};
   }
 }
+
+export async function renameJobAction(jobId: string, newTitle: string) {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return {success: false, error: "Unauthorized"};
+
+  try {
+    const job = await prisma.transcriptionJob.findFirst({
+      where: {id: jobId, userId: userId},
+    });
+    if (!job) return {success: false, error: "Job not found"};
+
+    await prisma.transcriptionJob.update({
+      where: {id: jobId},
+      data: {displayTitle: newTitle},
+    });
+
+    revalidatePath("/"); // Revalidate the root layout to update the sidebar
+    return {success: true};
+  } catch (error) {
+    console.error("Error renaming transcription job:", error);
+    return {success: false, error: "Failed to rename job."};
+  }
+}

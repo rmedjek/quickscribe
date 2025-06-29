@@ -6,6 +6,7 @@ import {processLink} from "@/lib/link-processor";
 import type {TranscriptionMode} from "@/components/ConfirmationView";
 import type {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction"; // Import the detailed result type
 import {del} from "@vercel/blob";
+import {generateTitleAction} from "@/actions/generateTitleAction";
 
 const prisma = new PrismaClient();
 
@@ -63,6 +64,14 @@ export const processTranscription = inngest.createFunction(
 
       if (result.success && result.data) {
         const transcriptionData = result.data;
+
+        const displayTitle = await step.run(
+          "generate-display-title",
+          async () => {
+            return await generateTitleAction(transcriptionData.text);
+          }
+        );
+
         await step.run("update-job-as-completed", async () => {
           await prisma.transcriptionJob.update({
             where: {id: jobId},
@@ -74,6 +83,7 @@ export const processTranscription = inngest.createFunction(
               transcriptVtt: transcriptionData.vttContent,
               duration: transcriptionData.duration,
               language: transcriptionData.language,
+              displayTitle: displayTitle,
             },
           });
         });
