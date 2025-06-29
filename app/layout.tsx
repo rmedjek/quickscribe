@@ -1,11 +1,14 @@
 // app/layout.tsx
+import type {Metadata} from "next";
 import {Inter} from "next/font/google";
-import "../styles/global.css"; // The global CSS import belongs HERE.
+import "../styles/global.css";
 import {ThemeProvider} from "./contexts/ThemeContext";
 import SessionProvider from "./components/SessionProvider";
 import {auth} from "@/lib/auth";
 import HistorySidebar from "@/components/HistorySidebar";
 import {PrismaClient} from "@prisma/client";
+import UserNav from "@/components/UserNav";
+import DarkModeToggle from "@/components/DarkModeToggle";
 
 const inter = Inter({subsets: ["latin"]});
 const prisma = new PrismaClient();
@@ -21,7 +24,6 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-
   const jobs = session?.user?.id
     ? await prisma.transcriptionJob.findMany({
         where: {userId: session.user.id},
@@ -31,21 +33,27 @@ export default async function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} antialiased`}>
+      <body
+        className={`${inter.className} antialiased bg-slate-50 dark:bg-slate-900`}
+      >
         <SessionProvider session={session}>
           <ThemeProvider>
-            <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 overflow-hidden">
-              {session?.user ? (
-                <>
-                  <HistorySidebar jobs={jobs} />
-                  <main className="flex-1 flex flex-col h-screen">
-                    {children}
-                  </main>
-                </>
-              ) : (
-                <main className="w-full h-full">{children}</main>
-              )}
-            </div>
+            {session?.user ? (
+              // --- AUTHENTICATED VIEW: The Two-Column Shell ---
+              <div className="flex h-screen w-full overflow-hidden">
+                <HistorySidebar jobs={jobs} />
+                <div className="flex-1 flex flex-col h-screen">
+                  <header className="flex h-16 items-center justify-end gap-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 px-6 flex-shrink-0 z-10">
+                    <UserNav />
+                    <DarkModeToggle />
+                  </header>
+                  <main className="flex-1 overflow-y-auto">{children}</main>
+                </div>
+              </div>
+            ) : (
+              // --- GUEST VIEW: A simple container that allows PageLayout to center the sign-in card.
+              <div className="w-full h-screen">{children}</div>
+            )}
           </ThemeProvider>
         </SessionProvider>
       </body>

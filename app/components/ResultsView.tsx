@@ -361,7 +361,7 @@ export default function ResultsView({
         <div className="flex justify-center my-6">
           <CheckCircle2 size={64} className="text-green-500" />
         </div>
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">
           Transcript Generated Successfully!
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">

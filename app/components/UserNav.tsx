@@ -1,3 +1,4 @@
+// app/components/UserNav.tsx
 "use client";
 
 import {signOut, useSession} from "next-auth/react";
@@ -9,8 +10,6 @@ export default function UserNav() {
   const {data: session} = useSession();
 
   if (!session?.user) {
-    // This component should only be rendered for authenticated users,
-    // so this is a fallback.
     return null;
   }
 
@@ -25,7 +24,11 @@ export default function UserNav() {
           className="rounded-full"
         />
       )}
-      <StyledButton onClick={() => signOut()} variant="secondary" size="sm">
+      <StyledButton
+        onClick={() => signOut({callbackUrl: "/signin"})}
+        variant="secondary"
+        size="sm"
+      >
         <LogOut size={16} className="mr-1.5" />
         Sign Out
       </StyledButton>

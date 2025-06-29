@@ -5,12 +5,14 @@ interface PageLayoutProps {
   children: React.ReactNode;
 }
 
-// This component's only job is to provide consistent padding and centering.
-// It should NOT import any global CSS.
 const PageLayout: React.FC<PageLayoutProps> = ({children}) => {
   return (
-    <div className="flex flex-col items-center justify-start p-4 sm:p-6 lg:p-8 w-full h-full">
-      <div className="w-full max-w-4xl">{children}</div>
+    <div className="w-full min-h-full flex flex-col items-center justify-center p-2 sm:p-4 lg:p-6">
+      {/* --- THIS IS THE FIX --- */}
+      {/* We are changing `max-w-2xl` to `max-w-xl`. This will make the container
+          for ResultsView, ConfirmationView, etc., narrower and feel more scaled-down. */}
+      <div className="w-full max-w-xl">{children}</div>
+      {/* --- END FIX --- */}
     </div>
   );
 };
