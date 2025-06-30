@@ -172,7 +172,7 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
   return (
     <div className="bg-white dark:bg-slate-800 dark:text-slate-200 w-full max-w-md sm:max-w-lg mx-auto rounded-2xl shadow-xl p-6 sm:p-8 space-y-6">
       <div className="text-center mb-8">
-        <h1 className="text-4xl sm:text-5xl font-bold text-slate-900">
+        <h1 className="text-4xl sm:text-4xl font-bold text-slate-900">
           QuickScribe{" "}
           {/* Updated App Name from "Quick Transcribe" for consistency */}
         </h1>

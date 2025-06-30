@@ -77,7 +77,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-lg md:max-w-xl mx-auto text-slate-700 dark:text-slate-200">
+    <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-xl mx-auto text-slate-700 dark:text-slate-200">
       <div className="text-center mb-6">
         <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-50">
           QuickScribe

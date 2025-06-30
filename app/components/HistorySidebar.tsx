@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import {usePathname} from "next/navigation"; // Import useRouter
+import {usePathname} from "next/navigation";
 import {useState, useRef, useEffect} from "react";
 import type {TranscriptionJob} from "@prisma/client";
 import {
@@ -25,12 +25,8 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [jobToEdit, setJobToEdit] = useState<TranscriptionJob | null>(null);
   const [newTitle, setNewTitle] = useState("");
-
-  // --- THIS IS THE FIX ---
-  // Hooks must be called at the top level of the component.
   const pathname = usePathname();
   const menuRef = useRef<HTMLDivElement>(null);
-  // --- END FIX ---
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -53,7 +49,8 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
     <>
       <div
         className={clsx(
-          "bg-slate-100 dark:bg-slate-900/80 backdrop-blur-sm border-r border-slate-200 dark:border-slate-700 transition-all duration-300 ease-in-out h-full flex flex-col flex-shrink-0",
+          // --- THIS IS THE FIX for the sidebar background ---
+          "bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 ease-in-out h-full flex flex-col flex-shrink-0",
           isCollapsed ? "w-16" : "w-72"
         )}
       >
@@ -68,7 +65,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
           )}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-2 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700"
+            className="p-2 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
           >
             <ChevronLeft
               className={clsx(
@@ -97,10 +94,10 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                 <Link
                   href={`/job/${job.id}`}
                   className={clsx(
-                    "w-full flex items-center p-2 rounded-md text-sm transition-colors",
+                    "w-full flex items-center p-2 rounded-md text-sm text-slate-700 dark:text-slate-300 transition-colors",
                     isActive
-                      ? "bg-slate-200 dark:bg-slate-700"
-                      : "hover:bg-slate-200/70 dark:hover:bg-slate-700/70"
+                      ? "bg-slate-200 dark:bg-slate-700 font-semibold"
+                      : "hover:bg-slate-100 dark:hover:bg-slate-700/60"
                   )}
                 >
                   {job.sourceFileHash ? (
@@ -119,7 +116,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                     onClick={() =>
                       setOpenMenuId(openMenuId === job.id ? null : job.id)
                     }
-                    className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-slate-300 dark:hover:bg-slate-600"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400"
                   >
                     <MoreHorizontal size={16} />
                   </button>
@@ -127,7 +124,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                 {openMenuId === job.id && (
                   <div
                     ref={menuRef}
-                    className="absolute z-10 right-2 top-10 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1"
+                    className="absolute z-10 right-2 top-10 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1 text-slate-700 dark:text-slate-200"
                   >
                     <button
                       onClick={() => {

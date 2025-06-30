@@ -1,7 +1,5 @@
 @import "tailwindcss";
 
-/* ------------------------------------------------------------------ */
-/* Global colour tokens (unchanged)                                   */
 :root {
   --bg: theme(colors.gray.100);
   --fg: theme(colors.slate.800);
