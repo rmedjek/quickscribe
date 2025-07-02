@@ -434,7 +434,7 @@ export default function ResultsView({
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
             <h3 className="text-lg font-semibold">AI Tools</h3>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-[var(--text-secondary)]">
+              <span className="text-sm text-[var(--text-prinmary)]">
                 Language:
               </span>
 

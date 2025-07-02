@@ -59,7 +59,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
           isCollapsed ? "w-16" : "w-72"
         )}
       >
-        <div className="p-3 flex items-center justify-between h-16 border-b border-[var(--border-color)]">
+        <div className="p-3 flex items-center justify-between h-16 border-[var(--border-color)]">
           {!isCollapsed && (
             <Link
               href="/"
@@ -131,7 +131,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                 {openMenuId === job.id && (
                   <div
                     ref={menuRef}
-                    className="absolute z-10 right-2 top-10 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1 text-slate-700 dark:text-slate-200"
+                    className="absolute z-10 right-2 top-10 w-40 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1 text-slate-700 dark:text-slate-200"
                   >
                     <button
                       onClick={() => {
@@ -170,7 +170,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
             type="text"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-slate-50 dark:bg-slate-700"
+            className="w-full px-3 py-2 border-slate-300 dark:border-slate-600 rounded-md bg-slate-50 dark:bg-slate-700"
           />
           <div className="flex justify-end gap-3">
             <StyledButton
