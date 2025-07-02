@@ -32,7 +32,7 @@ export default function SignInCard() {
     <div
       role="dialog"
       aria-modal="true"
-      className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-slate-200/50 p-8 text-center shadow-xl backdrop-blur-xl dark:bg-slate-800/50"
+      className="bg-[var(--card-bg)] text-[var(--fg)] w-full max-w-md overflow-hidden rounded-2xl border border-white/10 p-8 text-center shadow-xl backdrop-blur-xl dark:bg-slate-800/50"
     >
       <Sparkles className="mx-auto h-12 w-12 text-slate-800 dark:text-slate-100" />
       <h1 className="mt-4 text-3xl font-bold text-slate-900 dark:text-white">

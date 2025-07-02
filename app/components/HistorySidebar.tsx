@@ -28,6 +28,12 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const pathname = usePathname();
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const pathSegments = pathname.split("/");
+  const activeJobId =
+    pathSegments.length === 3 && pathSegments[1] === "job"
+      ? pathSegments[2]
+      : null;
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -49,16 +55,15 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
     <>
       <div
         className={clsx(
-          // --- THIS IS THE FIX for the sidebar background ---
-          "bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 ease-in-out h-full flex flex-col flex-shrink-0",
+          "bg-[var(--sidebar-bg)]  border-[var(--border-color)] transition-all duration-300 ease-in-out h-full flex flex-col flex-shrink-0",
           isCollapsed ? "w-16" : "w-72"
         )}
       >
-        <div className="p-3 flex items-center justify-between h-16 border-b border-slate-200 dark:border-slate-700">
+        <div className="p-3 flex items-center justify-between h-16 border-b border-[var(--border-color)]">
           {!isCollapsed && (
             <Link
               href="/"
-              className="font-bold text-xl text-slate-800 dark:text-slate-100"
+              className="bg-[var(--sidebar-bg)]  border-[var(--border-color)]"
             >
               QuickScribe
             </Link>
@@ -88,16 +93,18 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
 
         <div className="flex-1 overflow-y-auto px-3 space-y-1">
           {jobs.map((job) => {
-            const isActive = pathname.endsWith(job.id);
+            const isActive = activeJobId === job.id;
+
             return (
               <div key={job.id} className="relative group">
                 <Link
                   href={`/job/${job.id}`}
                   className={clsx(
-                    "w-full flex items-center p-2 rounded-md text-sm text-slate-700 dark:text-slate-300 transition-colors",
+                    "w-full flex items-center p-2 rounded-md text-sm transition-colors",
+                    // This will now correctly inherit the text color
                     isActive
-                      ? "bg-slate-200 dark:bg-slate-700 font-semibold"
-                      : "hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                      ? "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-50 font-semibold"
+                      : "hover:bg-slate-400 "
                   )}
                 >
                   {job.sourceFileHash ? (

@@ -155,12 +155,12 @@ function NewTranscriptionContent() {
 
   if (error) {
     return (
-      <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-xl w-full max-w-lg mx-auto text-center">
+      <div className="bg-[var(--card-bg)]  border-[var(--border-color)]  sm:p-8  text-[var(--text-primary)]  dark:bg-slate-800 p-8 rounded-xl shadow-xl w-full max-w-lg mx-auto text-center">
         <h2 className="text-xl font-bold text-red-600">Error</h2>
         <p className="text-slate-600 my-4">{error}</p>
         <button
           onClick={onCancel}
-          className="px-4 py-2 bg-slate-200 rounded font-semibold"
+          className="px-4 py-2  rounded font-semibold bg-[var(--card-bg)]  border-[var(--border-color)] "
         >
           Try Again
         </button>

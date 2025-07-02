@@ -1,12 +1,28 @@
 @import "tailwindcss";
-
 :root {
-  --bg: theme(colors.gray.100);
-  --fg: theme(colors.slate.800);
+  --page-bg: theme(colors.slate.100);    /* Light gray page background */
+  --header-bg: theme(colors.white);       /* White header */
+  --sidebar-bg: theme(colors.white); /* Slightly off-white sidebar */
+  --card-bg: theme(colors.white);         /* Pure white for cards */
+  --card-secondary-bg: theme(colors.slate.50); /* Background for nested elements like input boxes */
+  
+  --text-primary: theme(colors.slate.800);
+  --text-secondary: theme(colors.slate.500);
+  --border-color: theme(colors.slate.200);
 }
+
+/* --- Dark Mode Theme --- */
 html.dark {
-  --bg: theme(colors.slate.900);
-  --fg: theme(colors.slate.100);
+  /* As per your design specifications */
+  --page-bg: #212121;         /* Main dark background */
+  --header-bg: #212121;       /* Header matches the page background */
+  --sidebar-bg: #181818;     /* Distinct, darker sidebar */
+  --card-bg: #303030;         /* The main card color */
+  --card-secondary-bg: theme(colors.slate.700); /* Lighter dark for nested elements */
+
+  --text-primary: #ffffff;
+  --text-secondary: theme(colors.slate.400);
+  --border-color: theme(colors.slate.700);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -15,8 +31,8 @@ html.dark {
   }
 }
 body {
-  background: var(--bg);
-  color: var(--fg);
+  background-color: var(--page-bg);
+  color: var(--text-primary);
 }
 
 /* ------------------------------------------------------------------ */

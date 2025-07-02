@@ -29,7 +29,6 @@ import {
 import {APP_STEPS, TRANSCRIPTION_MODEL_DISPLAY_NAMES} from "@/types/app";
 import type {AppStep} from "@/types/app";
 import {AiResultCard, AiResultItem} from "./AiResultCard";
-import ProgressStepper from "./ProgressStepper";
 
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
 
@@ -354,41 +353,42 @@ export default function ResultsView({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-4xl mx-auto text-slate-700 dark:text-slate-200">
+    <div className="bg-[var(--card-bg)] text-[var(--text-primary)] border border-transparent dark:border-[var(--border-color)] p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-4xl mx-auto">
+      {" "}
       <div className="text-center mb-6">
         {/* The GrayProgressStepper is correctly placed here */}
         <GrayProgressStepper steps={APP_STEPS} />
         <div className="flex justify-center my-6">
           <CheckCircle2 size={64} className="text-green-500" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+        <h1 className="text-2xl font-bold">
           Transcript Generated Successfully!
         </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+        <p className="text-sm text-[var(--text-secondary)] mt-2">
           Using <strong>{TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode]}</strong> mode.
         </p>
       </div>
-
       <div className="relative mb-8">
         <button
           onClick={copyText}
-          className="absolute right-3 top-3 p-1.5 rounded-md text-gray-600 dark:text-gray-300 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400"
+          className="absolute right-3 top-3 p-1.5 rounded-md text-[var(--text-secondary)] bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500"
           title="Copy text"
         >
           <ClipboardCopy size={18} />
         </button>
+
         <span
-          className={`absolute right-0 -top-6 text-xs font-medium text-green-600 transition-opacity duration-200 ${
+          className={`absolute right-0 -top-6 text-xs font-medium text-green-600 dark:text-green-400 transition-opacity duration-200 ${
             copied ? "opacity-100" : "opacity-0"
           }`}
         >
           Text Copied!
         </span>
-        <div className="max-h-56 overflow-y-auto p-4 border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700/50 text-sm leading-relaxed">
+
+        <div className="max-h-56 overflow-y-auto p-4 rounded-xl bg-[var(--card-secondary-bg)] text-sm leading-relaxed text-[var(--text-primary)]">
           {transcriptionData.text}
         </div>
       </div>
-
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <DownloadButton
           label="TXT"
@@ -415,33 +415,30 @@ export default function ResultsView({
           size="sm"
         />
       </div>
-
       <div className="flex justify-center mb-6">
         <StyledButton
           onClick={zipAll}
           variant="primary"
           isLoading={zipping}
           disabled={zipping}
-          className="rounded-full px-6"
+          className="!bg-sky-600 hover:!bg-sky-700 !text-white rounded-full px-6"
         >
           <Download size={18} className="mr-2" />
           {zipping ? "Zipping…" : "Download All (.zip)"}
         </StyledButton>
       </div>
-
       {/* --- REFACTORED AI Interaction Section --- */}
-      <div className="my-8 py-6 border-t border-b border-slate-200 dark:border-slate-700 space-y-8">
+      <div className="my-8 py-6 border-t border-b border-[var(--border-color)] space-y-8">
         {/* --- AI Insights Grid --- */}
         <div>
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
-            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-              AI Tools
-            </h3>
+            <h3 className="text-lg font-semibold">AI Tools</h3>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-500 dark:text-slate-400">
+              <span className="text-sm text-[var(--text-secondary)]">
                 Language:
               </span>
-              <div className="inline-flex rounded-md shadow-sm bg-slate-100 dark:bg-slate-700 p-1">
+
+              <div className="inline-flex rounded-md shadow-sm bg-[var(--card-secondary-bg)] p-1">
                 <button
                   onClick={() => setAiOutputLanguage(transcriptLanguage)}
                   className={`px-3 py-1 text-sm rounded-md transition-colors ${
@@ -484,7 +481,7 @@ export default function ResultsView({
                   key={tool.taskType}
                   onClick={() => handleGenericAiStreamTask(tool.taskType)}
                   disabled={isStreamingAi || !transcriptionData.text}
-                  className={`p-3 rounded-lg text-left transition-colors flex items-start space-x-3
+                  className={`p-3 rounded-lg text-left transition-colors flex items-start space-x-3 
                     ${
                       isLastItemAndOdd
                         ? "sm:col-span-2 sm:w-1/2 sm:mx-auto"
@@ -493,7 +490,7 @@ export default function ResultsView({
                     ${
                       isLoadingThisTool
                         ? "bg-slate-200 dark:bg-slate-700/80 opacity-75 cursor-not-allowed"
-                        : "bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600/60 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
+                        : "bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600/60 "
                     }`}
                 >
                   <div className="flex-shrink-0 pt-0.5">
@@ -525,13 +522,11 @@ export default function ResultsView({
 
         {/* --- Q&A Section --- */}
         <div>
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3">
-            <HelpCircle
-              size={20}
-              className="inline mr-1.5 mb-0.5 text-slate-400 dark:text-slate-500"
-            />{" "}
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <HelpCircle size={20} className="text-[var(--text-secondary)]" />
             Ask a Question
           </h3>
+
           <form onSubmit={handleQuestionSubmitForm} className="space-y-3">
             <div className="flex items-center space-x-2">
               <input
@@ -539,7 +534,7 @@ export default function ResultsView({
                 value={customQuestion}
                 onChange={(e) => setCustomQuestion(e.target.value)}
                 placeholder="Ask anything about the transcript..."
-                className="flex-grow px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-colors text-sm"
+                className="flex-grow px-3 py-2 bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg focus:ring-2 focus:ring-sky-500 outline-none text-sm"
                 disabled={isStreamingAi || !transcriptionData.text}
               />
               <StyledButton
@@ -551,7 +546,7 @@ export default function ResultsView({
                   !transcriptionData.text ||
                   !customQuestion.trim()
                 }
-                className="flex-shrink-0 bg-sky-600 hover:bg-sky-700 focus-visible:ring-sky-500"
+                className="!bg-sky-600 hover:!bg-sky-700"
                 size="icon"
               >
                 {!(isStreamingAi && activeAiTask === "custom_question") && (
@@ -564,10 +559,9 @@ export default function ResultsView({
 
         <div className="mt-6 space-y-4">
           {(aiResults.length > 0 || globalAiError) && (
-            <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-2">
-              <h4 className="text-base font-semibold text-slate-700 dark:text-slate-200">
-                Generated Insights
-              </h4>
+            <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-2">
+              <h4 className="text-base font-semibold">Generated Insights</h4>
+
               {aiResults.length > 0 && !isStreamingAi && (
                 <StyledButton
                   onClick={handleClearAllAiResults}
@@ -610,7 +604,6 @@ export default function ResultsView({
           ))}
         </div>
       </div>
-
       <Modal
         isOpen={isEmailModalOpen}
         onClose={() => setIsEmailModalOpen(false)}
@@ -672,7 +665,6 @@ export default function ResultsView({
           </div>
         )}
       </Modal>
-
       <StyledButton
         onClick={onRestart}
         variant="secondary"

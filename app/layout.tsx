@@ -1,5 +1,4 @@
 // app/layout.tsx
-import type {Metadata} from "next";
 import {Inter} from "next/font/google";
 import "../styles/global.css";
 import {ThemeProvider} from "./contexts/ThemeContext";
@@ -43,7 +42,7 @@ export default async function RootLayout({
               <div className="flex h-screen w-full overflow-hidden">
                 <HistorySidebar jobs={jobs} />
                 <div className="flex-1 flex flex-col h-screen">
-                  <header className="flex h-16 items-center justify-end gap-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 px-6 flex-shrink-0 z-10">
+                  <header className="flex h-16 items-center justify-end gap-4  border-[var(--border-color)] bg-[var(--header-bg)]  dark:border-slate-700  dark:bg-slate-800/50 px-6 flex-shrink-0 z-10">
                     <UserNav />
                     <DarkModeToggle />
                   </header>

@@ -16,6 +16,7 @@ import {APP_STEPS} from "@/types/app";
 import StyledButton from "./StyledButton";
 import ProgressStepper from "./ProgressStepper";
 import {SelectedInputType} from "@/types/app";
+import clsx from "clsx";
 
 export type TranscriptionMode = "core" | "turbo";
 
@@ -34,7 +35,6 @@ interface ConfirmationViewProps {
 const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   file,
   link,
-  inputType,
   onConfirm,
   onCancel,
   isSubmitting = false,
@@ -43,9 +43,10 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
   const isAuthenticated = authStatus === "authenticated";
   const isAuthLoading = authStatus === "loading";
 
+  const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
+
   const isFileProvided = !!file;
   const isLinkProvided = !!link && !file;
-  const [selectedMode, setSelectedMode] = useState<TranscriptionMode>("core");
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 Bytes";
@@ -57,77 +58,93 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
 
   const getInputTypeDisplayName = () => {
     if (isLinkProvided) return "Video Link";
-    if (isFileProvided) {
-      if (inputType === "audio") return "Audio File";
-      if (inputType === "video") return "Video File";
-    }
-    return "File";
+    if (isFileProvided) return "Audio File";
+    return "Input";
   };
 
   const getInputIcon = () => {
     if (isLinkProvided)
-      return <Video size={16} className="inline mr-1.5 text-slate-500" />;
-    if (isFileProvided) {
-      if (inputType === "audio")
-        return <Music size={16} className="inline mr-1.5 text-slate-500" />;
-      if (inputType === "video")
-        return <Video size={16} className="inline mr-1.5 text-slate-500" />;
-    }
-    return <FileText size={16} className="inline mr-1.5 text-slate-500" />;
+      return (
+        <Video
+          size={16}
+          className="inline mr-1.5 text-[var(--text-secondary)]"
+        />
+      );
+    if (isFileProvided)
+      return (
+        <Music
+          size={16}
+          className="inline mr-1.5 text-[var(--text-secondary)]"
+        />
+      );
+    return (
+      <FileText
+        size={16}
+        className="inline mr-1.5 text-[var(--text-secondary)]"
+      />
+    );
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-xl mx-auto text-slate-700 dark:text-slate-200">
+    <div className="bg-[var(--card-bg)]  border-[var(--border-color)] p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-xl mx-auto text-[var(--text-primary)]">
       <div className="text-center mb-6">
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-50">
-          QuickScribe
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">Powered by Groq</p>
+        <h1 className="text-3xl sm:text-4xl font-bold">QuickScribe</h1>
+        <p className="text-sm text-[var(--text-secondary)] mt-1">
+          Powered by Groq
+        </p>
       </div>
 
       <ProgressStepper steps={APP_STEPS} currentStepId="configure" />
 
-      <div className="my-6 p-4 border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm rounded-lg">
-        <h3 className="text-base font-semibold mb-2 text-slate-700 dark:text-slate-200 flex items-center">
+      <div className="my-6 p-4 bg-[var(--card-secondary-bg)] rounded-lg">
+        <h3 className="text-base font-semibold mb-2 flex items-center">
           {getInputIcon()} Selected {getInputTypeDisplayName()}:
         </h3>
         {isFileProvided && file && (
-          <>
-            <p className="truncate ml-1">
+          <div className="text-sm space-y-1 text-[var(--text-secondary)]">
+            <p className="truncate">
               <strong>Name:</strong> {file.name}
             </p>
-            <p className="ml-1">
+            <p>
               <strong>Type:</strong> {file.type}
             </p>
-            <p className="ml-1">
+            <p>
               <strong>Size:</strong> {formatFileSize(file.size)}
             </p>
-          </>
+          </div>
         )}
         {isLinkProvided && (
-          <p className="break-all ml-1">
+          <p className="text-sm break-all text-[var(--text-secondary)]">
             <strong>URL:</strong> {link}
           </p>
         )}
       </div>
 
       {(isFileProvided || isLinkProvided) && (
-        <>
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold mb-4 text-center">
+            Transcription Modes
+          </h3>
+
+          {/* --- THIS IS THE FIX --- */}
+          {/* The Core/Turbo switch is restored here, above the mode cards. */}
           <div className="mb-6 flex items-center justify-center space-x-2">
             <span
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
+              className={clsx(
+                "px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all",
                 selectedMode === "core"
                   ? "bg-sky-500 text-white shadow-md"
-                  : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
-              }`}
+                  : "text-[var(--text-secondary)] hover:bg-slate-500/10"
+              )}
               onClick={() => setSelectedMode("core")}
             >
               Core
             </span>
             <div
-              className={`w-14 h-7 flex items-center rounded-full p-1 cursor-pointer transition-colors ease-in-out duration-300 ${
+              className={clsx(
+                "w-14 h-7 flex items-center rounded-full p-1 cursor-pointer transition-colors ease-in-out duration-300",
                 selectedMode === "turbo" ? "bg-orange-500" : "bg-sky-500"
-              }`}
+              )}
               onClick={() =>
                 setSelectedMode(selectedMode === "core" ? "turbo" : "core")
               }
@@ -142,81 +159,79 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
               />
             </div>
             <span
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
+              className={clsx(
+                "px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all",
                 selectedMode === "turbo"
                   ? "bg-orange-500 text-white shadow-md"
-                  : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
-              }`}
+                  : "text-[var(--text-secondary)] hover:bg-slate-500/10"
+              )}
               onClick={() => setSelectedMode("turbo")}
             >
               Turbo
             </span>
           </div>
+          {/* --- END FIX --- */}
 
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3 text-center">
-              Transcription Modes
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div
-                className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                  selectedMode === "core"
-                    ? "border-sky-500 bg-sky-50 dark:bg-sky-900/40 shadow-lg scale-105"
-                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 hover:border-slate-300 dark:hover:border-slate-500"
-                }`}
-                onClick={() => setSelectedMode("core")}
-                role="radio"
-                aria-checked={selectedMode === "core"}
-                tabIndex={0}
-              >
-                <div className="flex items-center mb-1">
-                  <Shield
-                    size={20}
-                    className={`mr-2 ${
-                      selectedMode === "core"
-                        ? "text-sky-600"
-                        : "text-slate-500"
-                    }`}
-                  />
-                  <h4 className="font-semibold text-slate-700 dark:text-slate-200">
-                    Core Mode
-                  </h4>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Efficient & fast. Good for most use cases.
-                </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div
+              className={clsx(
+                "p-4 rounded-lg border-1 cursor-pointer transition-all",
+                selectedMode === "core"
+                  ? "border-sky-500 bg-sky-500/10 shadow-lg scale-105"
+                  : "bg-[var(--card-secondary-bg)] border-transparent hover:border-slate-300 dark:hover:border-slate-600"
+              )}
+              onClick={() => setSelectedMode("core")}
+              role="radio"
+              aria-checked={selectedMode === "core"}
+              tabIndex={0}
+            >
+              <div className="flex items-center mb-1">
+                <Shield
+                  size={20}
+                  className={clsx(
+                    "mr-2",
+                    selectedMode === "core"
+                      ? "text-sky-500"
+                      : "text-[var(--text-secondary)]"
+                  )}
+                />
+                <h4 className="font-semibold">Core Mode</h4>
               </div>
-              <div
-                className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                  selectedMode === "turbo"
-                    ? "border-orange-500 bg-orange-50 dark:bg-orange-900/30 shadow-lg scale-105"
-                    : "border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 hover:border-slate-300 dark:hover:border-slate-500"
-                }`}
-                onClick={() => setSelectedMode("turbo")}
-                role="radio"
-                aria-checked={selectedMode === "turbo"}
-                tabIndex={0}
-              >
-                <div className="flex items-center mb-1">
-                  <Zap
-                    size={20}
-                    className={`mr-2 ${
-                      selectedMode === "turbo"
-                        ? "text-orange-600"
-                        : "text-slate-500"
-                    }`}
-                  />
-                  <h4 className="font-semibold text-slate-700 dark:text-slate-200">
-                    Turbo Mode
-                  </h4>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Highest accuracy. Best for critical quality.
-                </p>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Efficient & fast. Good for most use cases.
+              </p>
+            </div>
+
+            <div
+              className={clsx(
+                "p-4 rounded-lg border-2 cursor-pointer transition-all",
+                selectedMode === "turbo"
+                  ? "border-orange-500 bg-orange-500/10 shadow-lg scale-105"
+                  : "bg-[var(--card-secondary-bg)] border-transparent hover:border-slate-300 dark:hover:border-slate-600"
+              )}
+              onClick={() => setSelectedMode("turbo")}
+              role="radio"
+              aria-checked={selectedMode === "turbo"}
+              tabIndex={0}
+            >
+              <div className="flex items-center mb-1">
+                <Zap
+                  size={20}
+                  className={clsx(
+                    "mr-2",
+                    selectedMode === "turbo"
+                      ? "text-orange-500"
+                      : "text-[var(--text-secondary)]"
+                  )}
+                />
+                <h4 className="font-semibold">Turbo Mode</h4>
               </div>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Highest accuracy. Best for critical quality.
+              </p>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       <div className="space-y-3">
@@ -240,7 +255,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
             onClick={() => onConfirm("server", selectedMode)}
             variant="primary"
             size="lg"
-            className="w-full bg-orange-500 hover:bg-orange-600"
+            className="w-full "
             disabled={isSubmitting}
           >
             {isSubmitting ? (
@@ -258,7 +273,7 @@ const ConfirmationView: React.FC<ConfirmationViewProps> = ({
       <StyledButton
         onClick={onCancel}
         variant="ghost"
-        className="w-full mt-4 text-slate-600 dark:text-slate-300"
+        className="w-full mt-4 text-[var(--text-secondary)]"
         disabled={isSubmitting}
       >
         Back / Change Input
