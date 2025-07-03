@@ -92,71 +92,78 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 space-y-1">
-          {jobs.map((job) => {
-            const isActive = activeJobId === job.id;
-
-            return (
-              <div key={job.id} className="relative group">
-                <Link
-                  href={`/job/${job.id}`}
-                  className={clsx(
-                    "w-full flex items-center p-2 rounded-md text-sm transition-colors",
-                    // This will now correctly inherit the text color
-                    isActive
-                      ? "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-50 font-semibold"
-                      : "hover:bg-slate-400 "
-                  )}
-                >
-                  {job.sourceFileHash ? (
-                    <FileText size={16} className="flex-shrink-0" />
-                  ) : (
-                    <Link2 size={16} className="flex-shrink-0" />
-                  )}
+          {jobs.length === 0 ? (
+            // If it's empty, we display a helpful message.
+            <div className="p-4 text-center text-xs text-[var(--text-secondary)]">
+              <p>No history yet.</p>
+              <p className="mt-1">Your past transcriptions will appear here.</p>
+            </div>
+          ) : (
+            // If it's not empty, we render the list of jobs.
+            jobs.map((job) => {
+              const isActive = activeJobId === job.id;
+              return (
+                <div key={job.id} className="relative group">
+                  <Link
+                    href={`/job/${job.id}`}
+                    className={clsx(
+                      "w-full flex items-center p-2 rounded-md text-sm text-[var(--text-secondary)] transition-colors",
+                      isActive
+                        ? "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-50 font-semibold"
+                        : "hover:bg-slate-100 dark:hover:bg-slate-700/50"
+                    )}
+                  >
+                    {job.sourceFileHash ? (
+                      <FileText size={16} className="flex-shrink-0" />
+                    ) : (
+                      <Link2 size={16} className="flex-shrink-0" />
+                    )}
+                    {!isCollapsed && (
+                      <span className="ml-3 truncate">
+                        {job.displayTitle || job.sourceFileName}
+                      </span>
+                    )}
+                  </Link>
                   {!isCollapsed && (
-                    <span className="ml-3 truncate">
-                      {job.displayTitle || job.sourceFileName}
-                    </span>
+                    <button
+                      onClick={() =>
+                        setOpenMenuId(openMenuId === job.id ? null : job.id)
+                      }
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400"
+                    >
+                      <MoreHorizontal size={16} />
+                    </button>
                   )}
-                </Link>
-                {!isCollapsed && (
-                  <button
-                    onClick={() =>
-                      setOpenMenuId(openMenuId === job.id ? null : job.id)
-                    }
-                    className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400"
-                  >
-                    <MoreHorizontal size={16} />
-                  </button>
-                )}
-                {openMenuId === job.id && (
-                  <div
-                    ref={menuRef}
-                    className="absolute z-10 right-2 top-10 w-40 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1 text-slate-700 dark:text-slate-200"
-                  >
-                    <button
-                      onClick={() => {
-                        setJobToEdit(job);
-                        setNewTitle(job.displayTitle || "");
-                        setIsRenameModalOpen(true);
-                        setOpenMenuId(null);
-                      }}
-                      className="w-full flex items-center px-3 py-1.5 text-sm text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+                  {openMenuId === job.id && (
+                    <div
+                      ref={menuRef}
+                      className="absolute z-10 right-2 top-10 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1 text-slate-700 dark:text-slate-200"
                     >
-                      <Edit size={14} className="mr-2" />
-                      Rename
-                    </button>
-                    <button
-                      onClick={() => deleteJobAction(job.id)}
-                      className="w-full flex items-center px-3 py-1.5 text-sm text-left text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700"
-                    >
-                      <Trash2 size={14} className="mr-2" />
-                      Delete
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                      <button
+                        onClick={() => {
+                          setJobToEdit(job);
+                          setNewTitle(job.displayTitle || "");
+                          setIsRenameModalOpen(true);
+                          setOpenMenuId(null);
+                        }}
+                        className="w-full flex items-center px-3 py-1.5 text-sm text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        <Edit size={14} className="mr-2" />
+                        Rename
+                      </button>
+                      <button
+                        onClick={() => deleteJobAction(job.id)}
+                        className="w-full flex items-center px-3 py-1.5 text-sm text-left text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        <Trash2 size={14} className="mr-2" />
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

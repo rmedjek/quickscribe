@@ -157,10 +157,10 @@ function NewTranscriptionContent() {
     return (
       <div className="bg-[var(--card-bg)]  border-[var(--border-color)]  sm:p-8  text-[var(--text-primary)]  dark:bg-slate-800 p-8 rounded-xl shadow-xl w-full max-w-lg mx-auto text-center">
         <h2 className="text-xl font-bold text-red-600">Error</h2>
-        <p className="text-slate-600 my-4">{error}</p>
+        <p className="text-slate-250 my-4">{error}</p>
         <button
           onClick={onCancel}
-          className="px-4 py-2  rounded font-semibold bg-[var(--card-bg)]  border-[var(--border-color)] "
+          className="items-center justify-center p-2 rounded-md text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 transition-colors "
         >
           Try Again
         </button>

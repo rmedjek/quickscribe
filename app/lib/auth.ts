@@ -1,16 +1,14 @@
-// lib/auth.ts
-import NextAuth from "next-auth";
+// app/lib/auth.ts
 import {PrismaAdapter} from "@auth/prisma-adapter";
-import {PrismaClient} from "@prisma/client";
-import Google from "next-auth/providers/google";
+import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
+import Google from "next-auth/providers/google";
+import {PrismaClient} from "@prisma/client";
 import type {Adapter} from "next-auth/adapters";
-import {authConfig} from "@/auth.config";
 
 const prisma = new PrismaClient();
 
 export const {handlers, auth, signIn, signOut} = NextAuth({
-  ...authConfig, // Spread the base config here
   adapter: PrismaAdapter(prisma) as Adapter,
   providers: [
     Google({
@@ -25,8 +23,30 @@ export const {handlers, auth, signIn, signOut} = NextAuth({
   session: {
     strategy: "jwt",
   },
+  // We define the custom sign-in page directly here.
+  pages: {
+    signIn: "/signin",
+  },
   callbacks: {
-    ...authConfig.callbacks, // Include the authorized callback
+    // The `authorized` callback IS the middleware logic.
+    // It runs for every request matched by the `middleware.ts` config.
+    authorized({auth, request: {nextUrl}}) {
+      const isLoggedIn = !!auth?.user;
+      const isTryingToAccessApp = nextUrl.pathname !== "/signin";
+
+      if (isTryingToAccessApp) {
+        // If they are trying to access any protected page and are not logged in,
+        // redirect them to the login page.
+        if (isLoggedIn) return true;
+        return false;
+      } else if (isLoggedIn) {
+        // If they are logged in and try to visit the sign-in page,
+        // redirect them to the main page.
+        return Response.redirect(new URL("/", nextUrl));
+      }
+      // If they are not logged in and on the sign-in page, allow it.
+      return true;
+    },
     async jwt({token, user}) {
       if (user) {
         token.id = user.id;
@@ -36,12 +56,8 @@ export const {handlers, auth, signIn, signOut} = NextAuth({
     },
     async session({session, token}) {
       if (session.user) {
-        if (typeof token.id === "string") {
-          session.user.id = token.id;
-        }
-        if (typeof token.role === "string") {
-          session.user.role = token.role;
-        }
+        session.user.id = token.id as string;
+        session.user.role = token.role as string;
       }
       return session;
     },

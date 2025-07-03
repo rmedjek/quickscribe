@@ -610,16 +610,17 @@ export default function ResultsView({
         title="Draft Email Summary"
       >
         {draftedEmail && (
+          // --- THIS IS THE FIX for the Modal Content ---
           <div className="space-y-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              <label className="text-sm font-medium text-[var(--text-secondary)]">
                 Subject
               </label>
               <div className="flex items-center space-x-2">
                 <input
                   readOnly
                   value={draftedEmail.subject}
-                  className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-slate-50 dark:bg-slate-700"
+                  className="w-full p-2 border border-[var(--border-color)] rounded-md bg-[var(--card-secondary-bg)]"
                 />
                 <StyledButton
                   variant="secondary"
@@ -634,14 +635,14 @@ export default function ResultsView({
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              <label className="text-sm font-medium text-[var(--text-secondary)]">
                 Body
               </label>
               <div className="relative">
                 <textarea
                   readOnly
                   value={draftedEmail.body}
-                  className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-slate-50 dark:bg-slate-700 min-h-[250px] whitespace-pre-wrap"
+                  className="w-full p-2 border border-[var(--border-color)] rounded-md bg-[var(--card-secondary-bg)] min-h-[250px] whitespace-pre-wrap"
                 />
                 <div className="absolute top-2 right-2">
                   <StyledButton
@@ -663,6 +664,7 @@ export default function ResultsView({
               </StyledButton>
             </div>
           </div>
+          // --- END FIX ---
         )}
       </Modal>
       <StyledButton

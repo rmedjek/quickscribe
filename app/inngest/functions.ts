@@ -4,13 +4,11 @@ import {PrismaClient} from "@prisma/client";
 import {processFileFromBlob} from "@/lib/file-processor";
 import {processLink} from "@/lib/link-processor";
 import type {TranscriptionMode} from "@/components/ConfirmationView";
-import type {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction"; // Import the detailed result type
-import {del} from "@vercel/blob";
-import {generateTitleAction} from "@/actions/generateTitleAction";
+import type {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
+import {del} from "@vercel/blob"; // Import the delete function
 
 const prisma = new PrismaClient();
 
-// Define the expected shape of our processing result for clarity
 type ProcessingResult = {
   success: boolean;
   data?: DetailedTranscriptionResult;
@@ -39,8 +37,6 @@ export const processTranscription = inngest.createFunction(
       throw new Error(`Job with ID ${jobId} not found.`);
     }
 
-    let result: ProcessingResult;
-
     try {
       await step.run("update-job-status-to-processing", async () => {
         await prisma.transcriptionJob.update({
@@ -49,29 +45,24 @@ export const processTranscription = inngest.createFunction(
         });
       });
 
-      result = await step.run("process-media", async () => {
-        const mode = job.engineUsed as TranscriptionMode;
-        if (isLinkJob) {
-          return await processLink(job.fileUrl, mode);
-        } else {
-          return await processFileFromBlob(
-            job.fileUrl,
-            job.sourceFileName,
-            mode
-          );
+      const result: ProcessingResult = await step.run(
+        "process-media",
+        async () => {
+          const mode = job.engineUsed as TranscriptionMode;
+          if (isLinkJob) {
+            return await processLink(job.fileUrl, mode);
+          } else {
+            return await processFileFromBlob(
+              job.fileUrl,
+              job.sourceFileName,
+              mode
+            );
+          }
         }
-      });
+      );
 
       if (result.success && result.data) {
         const transcriptionData = result.data;
-
-        const displayTitle = await step.run(
-          "generate-display-title",
-          async () => {
-            return await generateTitleAction(transcriptionData.text);
-          }
-        );
-
         await step.run("update-job-as-completed", async () => {
           await prisma.transcriptionJob.update({
             where: {id: jobId},
@@ -83,7 +74,6 @@ export const processTranscription = inngest.createFunction(
               transcriptVtt: transcriptionData.vttContent,
               duration: transcriptionData.duration,
               language: transcriptionData.language,
-              displayTitle: displayTitle,
             },
           });
         });
@@ -92,7 +82,6 @@ export const processTranscription = inngest.createFunction(
           result.error || "Processing was successful but returned no data."
         );
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       await step.run("update-job-as-failed", async () => {
         await prisma.transcriptionJob.update({
@@ -106,6 +95,9 @@ export const processTranscription = inngest.createFunction(
       });
       throw error;
     } finally {
+      // --- THIS IS THE DEFINITIVE FIX ---
+      // This `finally` block runs whether the job succeeded or failed.
+      // We only delete the blob if it was a file-based job (not a link).
       if (!isLinkJob && job.fileUrl) {
         await step.run("delete-source-blob", async () => {
           console.log(`[Inngest] Deleting source blob: ${job.fileUrl}`);
@@ -113,13 +105,13 @@ export const processTranscription = inngest.createFunction(
             await del(job.fileUrl);
             console.log(`[Inngest] Successfully deleted blob: ${job.fileUrl}`);
           } catch (delError: any) {
-            // Log the deletion error, but don't fail the entire Inngest run for it
             console.error(
               `[Inngest] Failed to delete blob ${job.fileUrl}. It may need manual cleanup. Error: ${delError.message}`
             );
           }
         });
       }
+      // --- END FIX ---
     }
 
     return {success: true, message: `Job ${jobId} completed successfully.`};

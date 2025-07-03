@@ -7,7 +7,6 @@ import {processTranscription} from "@/inngest/functions"; // Import our worker f
 // The `serve` function exposes our Inngest functions as a Next.js API route.
 export const {GET, POST, PUT} = serve({
   client: inngest,
-  functions: [
-    processTranscription, // Register our worker function here
-  ],
+  functions: [processTranscription],
+  logLevel: "warn",
 });

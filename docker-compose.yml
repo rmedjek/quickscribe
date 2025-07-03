@@ -1,0 +1,20 @@
+# docker-compose.yml
+
+version: "3.8"
+services:
+  # This defines our local PostgreSQL database service
+  postgres:
+    image: postgres:15 # Use the official PostgreSQL version 15 image
+    container_name: quickscribe_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: quickscribe_user
+      POSTGRES_PASSWORD: quickscribe_password
+      POSTGRES_DB: quickscribe_dev
+    ports:
+      - "5433:5432" # Map port 5432 inside the container to 5433 on your laptop
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:
