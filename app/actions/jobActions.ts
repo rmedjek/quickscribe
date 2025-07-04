@@ -1,15 +1,16 @@
 // app/actions/jobActions.ts
 "use server";
 
-import {PrismaClient} from "@prisma/client";
+import prisma from "@/lib/prisma"; // CORRECT: Import the singleton
 import {auth} from "@/lib/auth";
 import {revalidatePath} from "next/cache";
 import {TranscriptionMode} from "@/components/ConfirmationView";
 import {inngest} from "@/inngest/client";
 import {del} from "@vercel/blob";
 
-const prisma = new PrismaClient();
+// REMOVED: const prisma = new PrismaClient();
 
+// ... rest of the file remains the same
 interface StartFileJobParams {
   blobUrl: string;
   originalFileName: string;

@@ -7,7 +7,6 @@ import {useState, useRef, useEffect} from "react";
 import type {TranscriptionJob} from "@prisma/client";
 import {
   Plus,
-  ChevronLeft,
   FileText,
   Link2,
   MoreHorizontal,
@@ -18,6 +17,11 @@ import clsx from "clsx";
 import {deleteJobAction, renameJobAction} from "@/actions/jobActions";
 import Modal from "./Modal";
 import StyledButton from "./StyledButton";
+// --- THIS IS THE FIX ---
+// Import the new icon components
+import QuickScribeLogo from "./icons/QuickScribeLogo";
+import SidebarToggleIcon from "./icons/SidebarToggleIcon";
+// --- END FIX ---
 
 export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -55,30 +59,39 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
     <>
       <div
         className={clsx(
-          "bg-[var(--sidebar-bg)]  border-[var(--border-color)] transition-all duration-300 ease-in-out h-full flex flex-col flex-shrink-0 shadow",
+          "bg-[var(--sidebar-bg)] border-r border-[var(--border-color)] transition-all duration-300 ease-in-out h-full flex flex-col flex-shrink-0",
           isCollapsed ? "w-16" : "w-72"
         )}
       >
-        <div className="p-3 flex items-center justify-between h-16 border-[var(--border-color)]">
-          {!isCollapsed && (
-            <Link
-              href="/"
-              className="bg-[var(--sidebar-bg)]  border-[var(--border-color)]"
-            >
-              QuickScribe
-            </Link>
+        <div
+          className={clsx(
+            "flex h-16 items-center border-b border-[var(--border-color)]",
+            isCollapsed ? "justify-center" : "justify-between px-3"
           )}
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-2 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
-          >
-            <ChevronLeft
-              className={clsx(
-                "transition-transform duration-300",
-                isCollapsed && "rotate-180"
-              )}
-            />
-          </button>
+        >
+          {isCollapsed ? (
+            <button
+              onClick={() => setIsCollapsed(false)}
+              className="group flex h-full w-full items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700/50"
+              aria-label="Expand sidebar"
+            >
+              <QuickScribeLogo className="h-7 w-auto group-hover:hidden" />
+              <SidebarToggleIcon className="hidden group-hover:block rotate-180 " />
+            </button>
+          ) : (
+            <>
+              <Link href="/" aria-label="Home">
+                <QuickScribeLogo className="h-7 w-auto" />
+              </Link>
+              <button
+                onClick={() => setIsCollapsed(true)}
+                className="p-2 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 dark:text-white"
+                aria-label="Collapse sidebar"
+              >
+                <SidebarToggleIcon className="transition-transform duration-300" />
+              </button>
+            </>
+          )}
         </div>
 
         <div className="p-3">
@@ -93,13 +106,16 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
 
         <div className="flex-1 overflow-y-auto px-3 space-y-1">
           {jobs.length === 0 ? (
-            // If it's empty, we display a helpful message.
-            <div className="p-4 text-center text-xs text-[var(--text-secondary)]">
+            <div
+              className={clsx(
+                "p-4 text-center text-xs text-[var(--text-secondary)]",
+                isCollapsed && "hidden"
+              )}
+            >
               <p>No history yet.</p>
               <p className="mt-1">Your past transcriptions will appear here.</p>
             </div>
           ) : (
-            // If it's not empty, we render the list of jobs.
             jobs.map((job) => {
               const isActive = activeJobId === job.id;
               return (
@@ -107,10 +123,11 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                   <Link
                     href={`/job/${job.id}`}
                     className={clsx(
-                      "w-full flex items-center p-2 rounded-md text-sm text-[var(--text-secondary)] transition-colors",
+                      "w-full flex items-center p-2 rounded-md text-sm text-[var(--text-primary)] transition-colors",
                       isActive
                         ? "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-50 font-semibold"
-                        : "hover:bg-slate-100 dark:hover:bg-slate-700/50"
+                        : "hover:bg-slate-100 dark:hover:bg-slate-700/50",
+                      isCollapsed && "justify-center"
                     )}
                   >
                     {job.sourceFileHash ? (
@@ -137,7 +154,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                   {openMenuId === job.id && (
                     <div
                       ref={menuRef}
-                      className="absolute z-10 right-2 top-10 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1 text-slate-700 dark:text-slate-200"
+                      className="absolute z-10 left-full ml-2 top-0 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1 text-slate-700 dark:text-slate-200"
                     >
                       <button
                         onClick={() => {
@@ -177,7 +194,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
             type="text"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            className="w-full px-3 py-2 border-slate-300 dark:border-slate-600 rounded-md bg-slate-50 dark:bg-slate-700"
+            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-slate-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
           />
           <div className="flex justify-end gap-3">
             <StyledButton

@@ -482,7 +482,7 @@ export default function ResultsView({
                   key={tool.taskType}
                   onClick={() => handleGenericAiStreamTask(tool.taskType)}
                   disabled={isStreamingAi || !transcriptionData.text}
-                  className={`p-3 rounded-lg text-left transition-colors flex items-start space-x-3
+                  className={`p-3 rounded-lg text-left transition-colors flex items-start space-x-3 
                     ${
                       isLastItemAndOdd
                         ? "sm:col-span-2 sm:w-1/2 sm:mx-auto"
@@ -491,7 +491,7 @@ export default function ResultsView({
                     ${
                       isLoadingThisTool
                         ? "bg-[var(--card-secondary-bg)] opacity-75 cursor-not-allowed"
-                        : "bg-[var(--card-secondary-bg)] hover:bg-slate-200 dark:hover:bg-slate-600"
+                        : "bg-[var(--card-secondary-bg)] hover:bg-slate-300 dark:hover:bg-slate-800"
                     }`}
                 >
                   <div className="flex-shrink-0 pt-0.5">

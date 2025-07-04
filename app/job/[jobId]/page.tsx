@@ -1,12 +1,12 @@
 // app/job/[jobId]/page.tsx
-import {PrismaClient} from "@prisma/client";
+import prisma from "@/lib/prisma"; // CORRECT: Import the singleton
 import {auth} from "@/lib/auth";
 import {redirect} from "next/navigation";
 import JobLifecycleClientPage from "./JobLifecycleClientPage";
-import PageLayout from "@/components/PageLayout"; // We still use this for centering
+import PageLayout from "@/components/PageLayout";
 import {StepperProvider} from "@/app/contexts/StepperContext";
 
-const prisma = new PrismaClient();
+// REMOVED: const prisma = new PrismaClient();
 
 export default async function JobPage({params}: {params: {jobId: string}}) {
   const {jobId} = params;

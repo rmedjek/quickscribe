@@ -5,12 +5,12 @@ import {ThemeProvider} from "./contexts/ThemeContext";
 import SessionProvider from "./components/SessionProvider";
 import {auth} from "@/lib/auth";
 import HistorySidebar from "@/components/HistorySidebar";
-import {PrismaClient} from "@prisma/client";
+import prisma from "@/lib/prisma";
 import UserNav from "@/components/UserNav";
-import DarkModeToggle from "@/components/DarkModeToggle";
+// REMOVED: No longer importing DarkModeToggle here
+// import DarkModeToggle from "@/components/DarkModeToggle";
 
 const inter = Inter({subsets: ["latin"]});
-const prisma = new PrismaClient();
 
 export const metadata = {
   title: "QuickScribe",
@@ -38,19 +38,18 @@ export default async function RootLayout({
         <SessionProvider session={session}>
           <ThemeProvider>
             {session?.user ? (
-              // --- AUTHENTICATED VIEW: The Two-Column Shell ---
               <div className="flex h-screen w-full overflow-hidden">
                 <HistorySidebar jobs={jobs} />
                 <div className="flex-1 flex flex-col h-screen">
-                  <header className="flex h-16 items-center justify-end gap-4 border-[var(--border-color)] bg-[var(--header-bg)] px-6 flex-shrink-0 z-10 drop-shadow-md">
+                  {/* --- THIS IS THE FIX: The header is now simpler --- */}
+                  <header className="flex h-16 items-center justify-end gap-4 border-b border-[var(--border-color)] bg-[var(--header-bg)] px-6 flex-shrink-0 z-10 drop-shadow-md">
                     <UserNav />
-                    <DarkModeToggle />
                   </header>
+                  {/* --- END FIX --- */}
                   <main className="flex-1 overflow-y-auto">{children}</main>
                 </div>
               </div>
             ) : (
-              // --- GUEST VIEW: A simple container that allows PageLayout to center the sign-in card.
               <div className="w-full h-screen">{children}</div>
             )}
           </ThemeProvider>

@@ -1,20 +1,16 @@
 // app/inngest/functions.ts
 import {inngest} from "./client";
-import {PrismaClient} from "@prisma/client";
-import {processFileFromBlob} from "@/lib/file-processor";
-import {processLink} from "@/lib/link-processor";
+import prisma from "@/lib/prisma"; // CORRECT: Import the singleton
+import {prepareAudioFromFileBlob} from "@/lib/file-processor";
+import {prepareAudioFromLink} from "@/lib/link-processor";
 import type {TranscriptionMode} from "@/components/ConfirmationView";
-import type {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
+import {transcribeAudioAction} from "@/actions/transcribeAudioAction";
 import {del} from "@vercel/blob";
+import * as fs from "node:fs/promises";
 
-const prisma = new PrismaClient();
+// REMOVED: const prisma = new PrismaClient();
 
-type ProcessingResult = {
-  success: boolean;
-  data?: DetailedTranscriptionResult;
-  error?: string;
-};
-
+// ... rest of the file remains the same
 export const processTranscription = inngest.createFunction(
   {
     id: "process-transcription-job",
@@ -33,8 +29,10 @@ export const processTranscription = inngest.createFunction(
       throw new Error(`Job with ID ${jobId} not found.`);
     }
 
+    // --- FIX: This variable will hold the path to the temp audio file ---
+    let tempAudioPath: string | null = null;
+
     try {
-      // Set the initial sub-stage
       await step.run("update-status-to-processing", async () => {
         return prisma.transcriptionJob.update({
           where: {id: jobId},
@@ -46,17 +44,21 @@ export const processTranscription = inngest.createFunction(
         });
       });
 
-      const result: ProcessingResult = await step.run(
-        "process-media",
-        async () => {
-          const mode = job.engineUsed as TranscriptionMode;
-          return isLinkJob
-            ? processLink(job.fileUrl, mode)
-            : processFileFromBlob(job.fileUrl, job.sourceFileName, mode);
-        }
-      );
+      // --- STEP 1: Prepare Audio, returning the file path ---
+      const preparationResult = await step.run("prepare-audio", async () => {
+        // 'mode' is not needed here, so it is removed.
+        return isLinkJob
+          ? await prepareAudioFromLink(job.fileUrl)
+          : await prepareAudioFromFileBlob(job.fileUrl, job.sourceFileName);
+      });
 
-      // After media is processed, update the sub-stage
+      if (!preparationResult.success) {
+        throw new Error(preparationResult.error);
+      }
+
+      // --- FIX: Store the path for cleanup in the 'finally' block ---
+      tempAudioPath = preparationResult.tempAudioPath;
+
       await step.run("update-substage-to-transcribing", async () => {
         return prisma.transcriptionJob.update({
           where: {id: jobId},
@@ -64,8 +66,31 @@ export const processTranscription = inngest.createFunction(
         });
       });
 
-      if (result.success && result.data) {
-        const transcriptionData = result.data;
+      // --- STEP 2: Transcribe Audio using the file path ---
+      const transcriptionResult = await step.run(
+        "transcribe-with-groq",
+        async () => {
+          // --- FIX: Read the file from the path to get a fresh Buffer ---
+          const audioBuffer = await fs.readFile(
+            preparationResult.tempAudioPath
+          );
+          const formData = new FormData();
+          const audioBlob = new Blob([audioBuffer], {type: "audio/opus"});
+          formData.append(
+            "audioBlob",
+            audioBlob,
+            preparationResult.audioFileName
+          );
+
+          return await transcribeAudioAction(
+            formData,
+            job.engineUsed as TranscriptionMode
+          );
+        }
+      );
+
+      if (transcriptionResult.success && transcriptionResult.data) {
+        const transcriptionData = transcriptionResult.data;
         await step.run("update-job-as-completed", async () => {
           return prisma.transcriptionJob.update({
             where: {id: jobId},
@@ -83,7 +108,8 @@ export const processTranscription = inngest.createFunction(
         });
       } else {
         throw new Error(
-          result.error || "Processing was successful but returned no data."
+          transcriptionResult.error ||
+            "Transcription was successful but returned no data."
         );
       }
     } catch (error: any) {
@@ -99,6 +125,24 @@ export const processTranscription = inngest.createFunction(
       });
       throw error;
     } finally {
+      // --- FINAL BLOCK: Cleanup using the stored file path ---
+      // 1. Clean up local temporary audio file
+      if (tempAudioPath) {
+        await step.run("cleanup-temp-audio", async () => {
+          console.log(
+            `[Inngest] Cleaning up temporary audio file: ${tempAudioPath}`
+          );
+          await fs
+            .unlink(tempAudioPath as string)
+            .catch((err) =>
+              console.warn(
+                `[Cleanup] Could not delete temp audio file: ${err.message}`
+              )
+            );
+        });
+      }
+
+      // 2. Delete the source blob from Vercel storage if it was a file upload
       if (!isLinkJob && job.fileUrl) {
         await step.run("delete-source-blob", async () => {
           console.log(`[Inngest] Deleting source blob: ${job.fileUrl}`);

@@ -55,7 +55,7 @@ function JobStatusDisplay({initialJob}: {initialJob: TranscriptionJob}) {
               progress: 0,
               isActive: true,
               isIndeterminate: true,
-              subText: "This may take a few minutes...",
+              subText: "This may take a few seconds...",
             },
           };
         }
