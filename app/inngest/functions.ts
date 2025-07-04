@@ -5,7 +5,7 @@ import {processFileFromBlob} from "@/lib/file-processor";
 import {processLink} from "@/lib/link-processor";
 import type {TranscriptionMode} from "@/components/ConfirmationView";
 import type {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
-import {del} from "@vercel/blob"; // Import the delete function
+import {del} from "@vercel/blob";
 
 const prisma = new PrismaClient();
 
@@ -18,9 +18,7 @@ type ProcessingResult = {
 export const processTranscription = inngest.createFunction(
   {
     id: "process-transcription-job",
-    concurrency: {
-      limit: 5,
-    },
+    concurrency: {limit: 5},
   },
   {event: "transcription.requested"},
   async ({event, step}) => {
@@ -28,9 +26,7 @@ export const processTranscription = inngest.createFunction(
     console.log(`[Inngest] Received job ${jobId}. Is link job: ${isLinkJob}`);
 
     const job = await step.run("fetch-job-details", async () => {
-      return await prisma.transcriptionJob.findUnique({
-        where: {id: jobId},
-      });
+      return await prisma.transcriptionJob.findUnique({where: {id: jobId}});
     });
 
     if (!job) {
@@ -38,10 +34,15 @@ export const processTranscription = inngest.createFunction(
     }
 
     try {
-      await step.run("update-job-status-to-processing", async () => {
-        await prisma.transcriptionJob.update({
+      // Set the initial sub-stage
+      await step.run("update-status-to-processing", async () => {
+        return prisma.transcriptionJob.update({
           where: {id: jobId},
-          data: {status: "PROCESSING", startedAt: new Date()},
+          data: {
+            status: "PROCESSING",
+            startedAt: new Date(),
+            processingSubStage: "PREPARING_AUDIO",
+          },
         });
       });
 
@@ -49,22 +50,24 @@ export const processTranscription = inngest.createFunction(
         "process-media",
         async () => {
           const mode = job.engineUsed as TranscriptionMode;
-          if (isLinkJob) {
-            return await processLink(job.fileUrl, mode);
-          } else {
-            return await processFileFromBlob(
-              job.fileUrl,
-              job.sourceFileName,
-              mode
-            );
-          }
+          return isLinkJob
+            ? processLink(job.fileUrl, mode)
+            : processFileFromBlob(job.fileUrl, job.sourceFileName, mode);
         }
       );
+
+      // After media is processed, update the sub-stage
+      await step.run("update-substage-to-transcribing", async () => {
+        return prisma.transcriptionJob.update({
+          where: {id: jobId},
+          data: {processingSubStage: "TRANSCRIBING"},
+        });
+      });
 
       if (result.success && result.data) {
         const transcriptionData = result.data;
         await step.run("update-job-as-completed", async () => {
-          await prisma.transcriptionJob.update({
+          return prisma.transcriptionJob.update({
             where: {id: jobId},
             data: {
               status: "COMPLETED",
@@ -74,6 +77,7 @@ export const processTranscription = inngest.createFunction(
               transcriptVtt: transcriptionData.vttContent,
               duration: transcriptionData.duration,
               language: transcriptionData.language,
+              processingSubStage: "COMPLETED",
             },
           });
         });
@@ -84,7 +88,7 @@ export const processTranscription = inngest.createFunction(
       }
     } catch (error: any) {
       await step.run("update-job-as-failed", async () => {
-        await prisma.transcriptionJob.update({
+        return prisma.transcriptionJob.update({
           where: {id: jobId},
           data: {
             status: "FAILED",
@@ -95,23 +99,18 @@ export const processTranscription = inngest.createFunction(
       });
       throw error;
     } finally {
-      // --- THIS IS THE DEFINITIVE FIX ---
-      // This `finally` block runs whether the job succeeded or failed.
-      // We only delete the blob if it was a file-based job (not a link).
       if (!isLinkJob && job.fileUrl) {
         await step.run("delete-source-blob", async () => {
           console.log(`[Inngest] Deleting source blob: ${job.fileUrl}`);
           try {
             await del(job.fileUrl);
-            console.log(`[Inngest] Successfully deleted blob: ${job.fileUrl}`);
           } catch (delError: any) {
             console.error(
-              `[Inngest] Failed to delete blob ${job.fileUrl}. It may need manual cleanup. Error: ${delError.message}`
+              `[Inngest] Failed to delete blob ${job.fileUrl}. Error: ${delError.message}`
             );
           }
         });
       }
-      // --- END FIX ---
     }
 
     return {success: true, message: `Job ${jobId} completed successfully.`};

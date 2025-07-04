@@ -3,24 +3,30 @@
 
 import {useState, useEffect, useCallback} from "react";
 import type {TranscriptionJob} from "@prisma/client";
-import {getJobAction} from "@/actions/jobActions";
+// We no longer import the server action directly in this file.
 
-export function useJobStatus(initialJob: TranscriptionJob) {
+// --- THIS IS THE DEFINITIVE FIX ---
+// The hook now accepts the data-fetching function as a parameter.
+export function useJobStatus(
+  initialJob: TranscriptionJob,
+  getJob: (jobId: string) => Promise<TranscriptionJob | null>
+) {
   const [job, setJob] = useState(initialJob);
 
   const shouldPoll = job.status === "PENDING" || job.status === "PROCESSING";
 
   const poll = useCallback(async () => {
-    const updatedJob = await getJobAction(job.id);
+    // It now calls the `getJob` function that was passed in.
+    const updatedJob = await getJob(job.id);
     if (updatedJob) {
       setJob(updatedJob);
     }
-  }, [job.id]);
+  }, [job.id, getJob]);
 
   useEffect(() => {
     if (!shouldPoll) return;
 
-    const intervalId = setInterval(poll, 3000); // Simple 3-second poll
+    const intervalId = setInterval(poll, 3000);
     return () => clearInterval(intervalId);
   }, [shouldPoll, poll]);
 

@@ -1,7 +1,7 @@
 // app/components/NewTranscriptionPage.tsx
 "use client";
 
-import React, {useState} from "react";
+import React, {useState, useCallback} from "react";
 import {useRouter} from "next/navigation";
 import {upload} from "@vercel/blob/client";
 import {
@@ -31,19 +31,14 @@ enum ViewState {
 function NewTranscriptionContent() {
   const {setStep, step} = useStepper();
   const router = useRouter();
-
   const [view, setView] = useState<ViewState>(ViewState.SelectingInput);
   const [file, setFile] = useState<File | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [inputType, setInputType] = useState<SelectedInputType | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // --- THIS IS THE FIX ---
-  // We manage a single activeStage object, not an array of stages.
-  const [activeStage, setActiveStage] = useState<StageDisplayData | null>(null);
+  const [activeStage, setActiveStage] = useState<StageDisplayData | null>(null); // State for a single stage
   const [statusText, setStatusText] = useState("");
-  // --- END FIX ---
 
   const onFileSelected = (f: File) => {
     setFile(f);
@@ -59,11 +54,11 @@ function NewTranscriptionContent() {
     setView(ViewState.ConfirmingInput);
     setStep("configure");
   };
-  const onCancel = () => {
+  const onCancel = useCallback(() => {
     setView(ViewState.SelectingInput);
     setStep("configure");
     setError(null);
-  };
+  }, [setStep]);
 
   const onConfirm = async (mode: TranscriptionMode) => {
     setIsSubmitting(true);
@@ -83,7 +78,6 @@ function NewTranscriptionContent() {
           isIndeterminate: false,
           subText: "0%",
         });
-
         const blob = await upload(file.name, file, {
           access: "public",
           handleUploadUrl: "/api/client-upload",
@@ -99,8 +93,7 @@ function NewTranscriptionContent() {
             );
           },
         });
-
-        setStatusText("Finalizing job...");
+        setStatusText("Creating your job...");
         setActiveStage({
           name: "create",
           label: "Creating Job Record",
@@ -108,7 +101,6 @@ function NewTranscriptionContent() {
           isActive: true,
           isIndeterminate: true,
         });
-
         const hash = await calculateFileHash(file);
         result = await startTranscriptionJob({
           blobUrl: blob.url,
@@ -118,7 +110,7 @@ function NewTranscriptionContent() {
           transcriptionMode: mode,
         });
       } else if (link) {
-        setStatusText("Creating job...");
+        setStatusText("Creating your job...");
         setActiveStage({
           name: "create",
           label: "Creating Job Record",
@@ -135,12 +127,6 @@ function NewTranscriptionContent() {
       }
 
       if (result.success && result.jobId) {
-        setStatusText("Success! Redirecting...");
-        setActiveStage((prev) =>
-          prev
-            ? {...prev, isComplete: true, isActive: false, progress: 1}
-            : null
-        );
         router.push(`/job/${result.jobId}`);
       } else {
         throw new Error(result.error || "Failed to create job");
@@ -149,24 +135,22 @@ function NewTranscriptionContent() {
       setError(e.message);
       setView(ViewState.Error);
     }
-
     setIsSubmitting(false);
   };
 
-  if (error) {
+  if (error)
     return (
-      <div className="bg-[var(--card-bg)]  border-[var(--border-color)]  sm:p-8  text-[var(--text-primary)]  dark:bg-slate-800 p-8 rounded-xl shadow-xl w-full max-w-lg mx-auto text-center">
-        <h2 className="text-xl font-bold text-red-600">Error</h2>
-        <p className="text-slate-250 my-4">{error}</p>
+      <div className="bg-[var(--card-bg)] p-8 rounded-xl shadow-xl w-full max-w-xl mx-auto text-center">
+        <h2 className="text-xl font-bold text-red-500">Error</h2>
+        <p className="my-4">{error}</p>
         <button
           onClick={onCancel}
-          className="items-center justify-center p-2 rounded-md text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 transition-colors "
+          className="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded font-semibold"
         >
           Try Again
         </button>
       </div>
     );
-  }
 
   switch (view) {
     case ViewState.SelectingInput:
@@ -188,10 +172,9 @@ function NewTranscriptionContent() {
         />
       );
     case ViewState.Submitting:
-      // This now correctly passes the single activeStage object.
       return (
         <ProcessingView
-          activeStage={activeStage}
+          stage={activeStage}
           currentOverallStatusMessage={statusText}
           appSteps={APP_STEPS}
           currentAppStepId={step}

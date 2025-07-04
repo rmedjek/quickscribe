@@ -30,12 +30,13 @@ model User {
 }
 
 model TranscriptionJob {
-  id             String    @id @default(cuid())
-  status         JobStatus @default(PENDING)
-  sourceFileName String
-  sourceFileSize Int
-  sourceFileHash String?
-  fileUrl        String
+  id                 String    @id @default(cuid())
+  status             JobStatus @default(PENDING)
+  sourceFileName     String
+  sourceFileSize     Int
+  sourceFileHash     String?
+  fileUrl            String
+  processingSubStage String?
 
   // Results
   transcriptText String? @db.Text

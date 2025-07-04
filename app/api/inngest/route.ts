@@ -8,5 +8,5 @@ import {processTranscription} from "@/inngest/functions"; // Import our worker f
 export const {GET, POST, PUT} = serve({
   client: inngest,
   functions: [processTranscription],
-  logLevel: "warn",
+  logLevel: "error",
 });

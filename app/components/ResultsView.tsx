@@ -369,14 +369,15 @@ export default function ResultsView({
         </p>
       </div>
       <div className="relative mb-8">
+        {/* --- THIS IS THE FIX for the Copy button --- */}
         <button
           onClick={copyText}
-          className="absolute right-3 top-3 p-1.5 rounded-md text-[var(--text-secondary)] bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500"
+          className="absolute right-3 top-3 p-1.5 rounded-md text-[var(--text-secondary)] bg-[var(--card-bg)] hover:bg-[var(--card-primary-bg)] dark:hover:bg-slate-600 transition-colors"
           title="Copy text"
         >
           <ClipboardCopy size={18} />
         </button>
-
+        {/* --- END FIX --- */}
         <span
           className={`absolute right-0 -top-6 text-xs font-medium text-green-600 dark:text-green-400 transition-opacity duration-200 ${
             copied ? "opacity-100" : "opacity-0"
@@ -467,7 +468,7 @@ export default function ResultsView({
             </div>
           </div>
 
-          {/* === MODIFIED GRID FOR BETTER STYLING === */}
+          {/* --- THIS IS THE FIX for the AI Tool buttons --- */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {aiQuickTools.map((tool, index) => {
               const isLoadingThisTool =
@@ -481,7 +482,7 @@ export default function ResultsView({
                   key={tool.taskType}
                   onClick={() => handleGenericAiStreamTask(tool.taskType)}
                   disabled={isStreamingAi || !transcriptionData.text}
-                  className={`p-3 rounded-lg text-left transition-colors flex items-start space-x-3 
+                  className={`p-3 rounded-lg text-left transition-colors flex items-start space-x-3
                     ${
                       isLastItemAndOdd
                         ? "sm:col-span-2 sm:w-1/2 sm:mx-auto"
@@ -489,15 +490,15 @@ export default function ResultsView({
                     }
                     ${
                       isLoadingThisTool
-                        ? "bg-slate-200 dark:bg-slate-700/80 opacity-75 cursor-not-allowed"
-                        : "bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600/60 "
+                        ? "bg-[var(--card-secondary-bg)] opacity-75 cursor-not-allowed"
+                        : "bg-[var(--card-secondary-bg)] hover:bg-slate-200 dark:hover:bg-slate-600"
                     }`}
                 >
                   <div className="flex-shrink-0 pt-0.5">
                     {isLoadingThisTool ? (
                       <Loader2
                         size={18}
-                        className="animate-spin text-slate-500"
+                        className="animate-spin text-[var(--text-secondary)]"
                       />
                     ) : (
                       <tool.icon
@@ -507,10 +508,10 @@ export default function ResultsView({
                     )}
                   </div>
                   <div>
-                    <div className="font-semibold text-sm text-slate-800 dark:text-slate-100">
+                    <div className="font-semibold text-sm text-[var(--text-primary)]">
                       {isLoadingThisTool ? "Generating..." : tool.name}
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                       {tool.description}
                     </p>
                   </div>
@@ -518,6 +519,7 @@ export default function ResultsView({
               );
             })}
           </div>
+          {/* --- END FIX --- */}
         </div>
 
         {/* --- Q&A Section --- */}

@@ -55,7 +55,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
     <>
       <div
         className={clsx(
-          "bg-[var(--sidebar-bg)]  border-[var(--border-color)] transition-all duration-300 ease-in-out h-full flex flex-col flex-shrink-0",
+          "bg-[var(--sidebar-bg)]  border-[var(--border-color)] transition-all duration-300 ease-in-out h-full flex flex-col flex-shrink-0 shadow",
           isCollapsed ? "w-16" : "w-72"
         )}
       >
