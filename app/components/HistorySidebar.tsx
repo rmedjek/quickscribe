@@ -12,16 +12,14 @@ import {
   MoreHorizontal,
   Edit,
   Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import clsx from "clsx";
 import {deleteJobAction, renameJobAction} from "@/actions/jobActions";
 import Modal from "./Modal";
 import StyledButton from "./StyledButton";
-// --- THIS IS THE FIX ---
-// Import the new icon components
-import QuickScribeLogo from "./icons/QuickScribeLogo";
 import SidebarToggleIcon from "./icons/SidebarToggleIcon";
-// --- END FIX ---
+import QuickScribeStaticLogo from "./icons/QuickScribeStaticLogo";
 
 export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -31,6 +29,8 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const [newTitle, setNewTitle] = useState("");
   const pathname = usePathname();
   const menuRef = useRef<HTMLDivElement>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [jobToDelete, setJobToDelete] = useState<TranscriptionJob | null>(null);
 
   const pathSegments = pathname.split("/");
   const activeJobId =
@@ -55,6 +55,13 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
     setJobToEdit(null);
   };
 
+  const handleDeleteConfirm = async () => {
+    if (!jobToDelete) return;
+    await deleteJobAction(jobToDelete.id);
+    setIsDeleteModalOpen(false);
+    setJobToDelete(null);
+  };
+
   return (
     <>
       <div
@@ -75,13 +82,16 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
               className="group flex h-full w-full items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700/50"
               aria-label="Expand sidebar"
             >
-              <QuickScribeLogo className="h-7 w-auto group-hover:hidden" />
+              <QuickScribeStaticLogo
+                className="h-7 w-auto group-hover:hidden"
+                color="#0ea5e9"
+              />
               <SidebarToggleIcon className="hidden group-hover:block rotate-180 " />
             </button>
           ) : (
             <>
               <Link href="/" aria-label="Home">
-                <QuickScribeLogo className="h-7 w-auto" />
+                <QuickScribeStaticLogo className="h-7 w-auto" color="#0ea5e9" />
               </Link>
               <button
                 onClick={() => setIsCollapsed(true)}
@@ -119,15 +129,20 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
             jobs.map((job) => {
               const isActive = activeJobId === job.id;
               return (
-                <div key={job.id} className="relative group">
+                <div
+                  key={job.id}
+                  className={clsx(
+                    "group relative flex items-center justify-between rounded-md p-2 text-sm transition-colors",
+                    isActive
+                      ? "bg-slate-200 dark:bg-slate-700 font-semibold"
+                      : "hover:bg-slate-100 dark:hover:bg-slate-700/50"
+                  )}
+                >
                   <Link
                     href={`/job/${job.id}`}
                     className={clsx(
-                      "w-full flex items-center p-2 rounded-md text-sm text-[var(--text-primary)] transition-colors",
-                      isActive
-                        ? "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-50 font-semibold"
-                        : "hover:bg-slate-100 dark:hover:bg-slate-700/50",
-                      isCollapsed && "justify-center"
+                      "flex flex-grow items-center truncate text-[var(--text-primary)]",
+                      isActive && "text-slate-800 dark:text-slate-50"
                     )}
                   >
                     {job.sourceFileHash ? (
@@ -141,20 +156,23 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                       </span>
                     )}
                   </Link>
+
                   {!isCollapsed && (
                     <button
                       onClick={() =>
                         setOpenMenuId(openMenuId === job.id ? null : job.id)
                       }
-                      className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400"
+                      className="ml-2 flex-shrink-0 rounded-md p-1 text-slate-500 opacity-0 group-hover:opacity-100 hover:bg-slate-300 dark:text-slate-400 dark:hover:bg-slate-600"
                     >
                       <MoreHorizontal size={16} />
                     </button>
                   )}
+
                   {openMenuId === job.id && (
                     <div
                       ref={menuRef}
-                      className="absolute z-10 left-full ml-2 top-0 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1 text-slate-700 dark:text-slate-200"
+                      // This positioning is now correct relative to the parent div
+                      className="absolute right-2 top-10 z-10 w-40 rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                     >
                       <button
                         onClick={() => {
@@ -163,14 +181,18 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                           setIsRenameModalOpen(true);
                           setOpenMenuId(null);
                         }}
-                        className="w-full flex items-center px-3 py-1.5 text-sm text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+                        className="flex w-full items-center px-3 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
                       >
                         <Edit size={14} className="mr-2" />
                         Rename
                       </button>
                       <button
-                        onClick={() => deleteJobAction(job.id)}
-                        className="w-full flex items-center px-3 py-1.5 text-sm text-left text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                        onClick={() => {
+                          setJobToDelete(job);
+                          setIsDeleteModalOpen(true);
+                          setOpenMenuId(null);
+                        }}
+                        className="flex w-full items-center px-3 py-1.5 text-left text-sm text-red-600 hover:bg-slate-100 dark:text-red-400 dark:hover:bg-slate-700"
                       >
                         <Trash2 size={14} className="mr-2" />
                         Delete
@@ -204,6 +226,44 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
               Cancel
             </StyledButton>
             <StyledButton onClick={handleRename}>Save</StyledButton>
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        title="Delete Transcription?"
+      >
+        <div className="space-y-6">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 sm:h-8 sm:w-8">
+              <AlertTriangle
+                className="h-6 w-6 text-red-600 dark:text-red-400"
+                aria-hidden="true"
+              />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-[var(--text-secondary)]">
+                Are you sure you want to delete this transcription?
+                <br />
+                <strong className="font-medium text-[var(--text-primary)] break-all">
+                  {jobToDelete?.displayTitle || jobToDelete?.sourceFileName}
+                </strong>
+                <br />
+                This action cannot be undone.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <StyledButton
+              variant="secondary"
+              onClick={() => setIsDeleteModalOpen(false)}
+            >
+              Cancel
+            </StyledButton>
+            <StyledButton variant="danger" onClick={handleDeleteConfirm}>
+              Delete Transcription
+            </StyledButton>
           </div>
         </div>
       </Modal>

@@ -1,7 +1,13 @@
 // app/components/icons/QuickScribeLogo.tsx
 import React from "react";
 
-const QuickScribeLogo = ({className}: {className?: string}) => (
+const QuickScribeLogo = ({
+  className,
+  color = "#0ea5e9",
+}: {
+  className?: string;
+  color?: string;
+}) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 200 80"
@@ -10,7 +16,7 @@ const QuickScribeLogo = ({className}: {className?: string}) => (
     aria-label="QuickScribe Logo"
   >
     <style>{`
-      .bar { fill:#0ea5e9; rx:4px; }
+      .bar { fill:${color}; rx:4px; }
       @keyframes pulse {
         0%,100% { height:20px; y:30px; }
         50%     { height:60px; y:10px; }

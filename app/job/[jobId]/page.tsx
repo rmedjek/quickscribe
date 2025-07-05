@@ -5,6 +5,8 @@ import {redirect} from "next/navigation";
 import JobLifecycleClientPage from "./JobLifecycleClientPage";
 import PageLayout from "@/components/PageLayout";
 import {StepperProvider} from "@/app/contexts/StepperContext";
+import Link from "next/link";
+import StyledButton from "@/components/StyledButton";
 
 // REMOVED: const prisma = new PrismaClient();
 
@@ -20,8 +22,15 @@ export default async function JobPage({params}: {params: {jobId: string}}) {
   if (!job) {
     return (
       <PageLayout>
-        <div className="text-center p-8">
+        <div className="text-center p-8 space-y-6">
           <h1 className="text-2xl font-bold text-red-500">Job Not Found</h1>
+          <p className="text-[var(--text-secondary)]">
+            The transcription you are looking for has been deleted or does not
+            exist.
+          </p>
+          <Link href="/">
+            <StyledButton variant="primary">New Transcription</StyledButton>
+          </Link>
         </div>
       </PageLayout>
     );

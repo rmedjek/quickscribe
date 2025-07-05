@@ -4,6 +4,7 @@
 import React from "react";
 import ProgressStepper from "./ProgressStepper";
 import {AppStep, StepId, type StageDisplayData} from "@/types/app";
+import QuickScribeLogo from "./icons/QuickScribeLogo";
 
 interface Props {
   stage: StageDisplayData | null;
@@ -27,9 +28,12 @@ export default function ProcessingView({
         </p>
       </div>
       <ProgressStepper steps={appSteps} currentStepId={currentAppStepId} />
-      <p className="text-lg font-semibold text-center mt-8 mb-6">
+      <p className="text-lg font-semibold text-center mt-8 mb-2">
         {currentOverallStatusMessage}
       </p>
+      <div className="flex justify-center my-4 h-12">
+        <QuickScribeLogo color="#f97316" />
+      </div>
       {stage && <StageRow stage={stage} />}
       <p className="text-xs text-[var(--text-secondary)] mt-8 text-center">
         Please keep this tab open while we work.
@@ -55,9 +59,9 @@ function StageRow({stage}: {stage: StageDisplayData}) {
       <div className="flex items-center justify-between mb-1.5 text-sm font-medium">
         <span className="text-[var(--text-secondary)]">{stage.label}</span>
         {stage.subText && (
-          <span className="text-xs text-[var(--text-secondary)]">
-            {stage.subText}
-          </span>
+          <div className="flex items-center justify-between mb-1.5 text-sm font-medium">
+            <span className="text-[var(--text-secondary)]">{stage.label}</span>
+          </div>
         )}
       </div>
       <div className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">

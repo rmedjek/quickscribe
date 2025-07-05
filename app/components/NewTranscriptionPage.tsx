@@ -87,7 +87,6 @@ function NewTranscriptionContent() {
                 ? {
                     ...prev,
                     progress: p.percentage / 100,
-                    subText: `${p.percentage}%`,
                   }
                 : null
             );
