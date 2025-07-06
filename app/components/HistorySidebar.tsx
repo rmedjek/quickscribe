@@ -6,7 +6,6 @@ import {usePathname} from "next/navigation";
 import {useState, useRef, useEffect} from "react";
 import type {TranscriptionJob} from "@prisma/client";
 import {
-  Plus,
   FileText,
   Link2,
   MoreHorizontal,

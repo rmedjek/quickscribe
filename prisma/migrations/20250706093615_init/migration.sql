@@ -105,22 +105,37 @@ ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId"
 -- AddForeignKey
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- Create the high-performance GIN index
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+-- Create the high-performance GIN index on the tsvector column
 CREATE INDEX "transcription_jobs_transcript_tsvector_idx" ON "transcription_jobs" USING GIN ("transcript_tsvector");
 
--- Create the function to update the tsvector
-CREATE OR REPLACE FUNCTION update_transcript_tsvector()
+-- Create the language-aware function to update the tsvector
+CREATE OR REPLACE FUNCTION update_transcript_tsvector_language_aware()
 RETURNS TRIGGER AS $$
+DECLARE
+  language_config regconfig := CASE
+    WHEN NEW.language = 'ar' THEN 'arabic' WHEN NEW.language = 'da' THEN 'danish'
+    WHEN NEW.language = 'nl' THEN 'dutch'  WHEN NEW.language = 'en' THEN 'english'
+    WHEN NEW.language = 'fi' THEN 'finnish' WHEN NEW.language = 'fr' THEN 'french'
+    WHEN NEW.language = 'de' THEN 'german' WHEN NEW.language = 'hu' THEN 'hungarian'
+    WHEN NEW.language = 'it' THEN 'italian' WHEN NEW.language = 'no' THEN 'norwegian'
+    WHEN NEW.language = 'pt' THEN 'portuguese' WHEN NEW.language = 'ro' THEN 'romanian'
+    WHEN NEW.language = 'ru' THEN 'russian' WHEN NEW.language = 'es' THEN 'spanish'
+    WHEN NEW.language = 'sv' THEN 'swedish' WHEN NEW.language = 'tr' THEN 'turkish'
+    ELSE 'simple'
+  END;
 BEGIN
   NEW.transcript_tsvector :=
-    setweight(to_tsvector('english', coalesce(NEW."displayTitle", '')), 'A') ||
-    setweight(to_tsvector('english', coalesce(NEW."transcriptText", '')), 'B');
+    setweight(to_tsvector(language_config, coalesce(NEW."displayTitle", '')), 'A') ||
+    setweight(to_tsvector(language_config, coalesce(NEW."transcriptText", '')), 'B');
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 -- Create the trigger to run the function automatically
-CREATE OR REPLACE TRIGGER transcript_tsvector_update
-BEFORE INSERT OR UPDATE OF "displayTitle", "transcriptText" ON "transcription_jobs"
+CREATE TRIGGER transcript_tsvector_update_language_aware
+BEFORE INSERT OR UPDATE OF "displayTitle", "transcriptText", "language" ON "transcription_jobs"
 FOR EACH ROW
-EXECUTE FUNCTION update_transcript_tsvector();
+EXECUTE FUNCTION update_transcript_tsvector_language_aware();
