@@ -42,7 +42,10 @@ export default async function RootLayout({
                 <HistorySidebar jobs={jobs} />
                 <div className="flex-1 flex flex-col h-screen">
                   {/* --- THIS IS THE FIX: The header is now simpler --- */}
-                  <header className="flex h-16 items-center justify-end gap-4 border-b border-[var(--border-color)] bg-[var(--header-bg)] px-6 flex-shrink-0 z-10 drop-shadow-md">
+                  <header
+                    className="flex h-16 items-center justify-end gap-4   px-6 flex-shrink-0 z-10 drop-shadow-md
+                  bg-[var(--sidebar-bg)] border-[var(--border-color)]"
+                  >
                     <UserNav />
                   </header>
                   {/* --- END FIX --- */}

@@ -13,6 +13,8 @@ import {
   Edit,
   Trash2,
   AlertTriangle,
+  Search,
+  FilePenLine,
 } from "lucide-react";
 import clsx from "clsx";
 import {deleteJobAction, renameJobAction} from "@/actions/jobActions";
@@ -20,6 +22,7 @@ import Modal from "./Modal";
 import StyledButton from "./StyledButton";
 import SidebarToggleIcon from "./icons/SidebarToggleIcon";
 import QuickScribeStaticLogo from "./icons/QuickScribeStaticLogo";
+import SearchModal from "./SearchModal";
 
 export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -31,6 +34,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [jobToDelete, setJobToDelete] = useState<TranscriptionJob | null>(null);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
   const pathSegments = pathname.split("/");
   const activeJobId =
@@ -66,13 +70,13 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
     <>
       <div
         className={clsx(
-          "bg-[var(--sidebar-bg)] border-r border-[var(--border-color)] transition-all duration-300 ease-in-out h-full flex flex-col flex-shrink-0",
+          "bg-[var(--sidebar-bg)] border-[var(--border-color)] transition-all duration-300 ease-in-out h-full flex flex-col flex-shrink-0 shadow-xl",
           isCollapsed ? "w-16" : "w-72"
         )}
       >
         <div
           className={clsx(
-            "flex h-16 items-center border-b border-[var(--border-color)]",
+            "flex h-16 items-center  border-[var(--border-color)]",
             isCollapsed ? "justify-center" : "justify-between px-3"
           )}
         >
@@ -104,17 +108,33 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
           )}
         </div>
 
-        <div className="p-3">
+        {/* --- THIS IS THE FIX: New menu items, hidden when collapsed --- */}
+        <div className={clsx("p-3 space-y-1", isCollapsed && "hidden")}>
           <Link
             href="/"
-            className="flex items-center justify-center p-2 rounded-md text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 transition-colors"
+            className="flex w-full items-center rounded-md p-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-slate-100 dark:hover:bg-slate-700/50"
           >
-            <Plus size={18} className={clsx(!isCollapsed && "mr-2")} />
-            {!isCollapsed && <span>New Transcription</span>}
+            <FilePenLine size={18} className="mr-3" />
+            New Transcription
           </Link>
+          <button
+            onClick={() => setIsSearchModalOpen(true)}
+            className="flex w-full items-center rounded-md p-2 text-left text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-slate-100 dark:hover:bg-slate-700/50"
+          >
+            <Search size={18} className="mr-3" />
+            Search
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 space-y-1">
+          <h3
+            className={clsx(
+              "px-2 pt-4 pb-2 text-xs font-semibold text-slate-500 dark:text-slate-400",
+              isCollapsed && "hidden"
+            )}
+          >
+            Transcription
+          </h3>
           {jobs.length === 0 ? (
             <div
               className={clsx(
@@ -267,6 +287,11 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
           </div>
         </div>
       </Modal>
+      <SearchModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+        recentJobs={jobs}
+      />
     </>
   );
 }

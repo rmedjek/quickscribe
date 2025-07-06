@@ -185,8 +185,7 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
                     ${
                       isDragging
                         ? "border-sky-500 bg-sky-50"
-                        : //: "border-slate-300 dark:border-slate-600 hover:border-sky-400"
-                          "border-[var(--border-color)] bg-[var(--page-bg)] hover:border-sky-400"
+                        : "border-[var(--border-color)] bg-[var(--page-bg)] hover:border-sky-400"
                     }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}

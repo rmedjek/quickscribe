@@ -44,6 +44,9 @@ model TranscriptionJob {
   transcriptVtt  String? @db.Text
   displayTitle   String? @db.Text
 
+  // New field for full-text search (index removed) ---
+  transcript_tsvector Unsupported("tsvector")?
+
   // Metadata
   engineUsed   String  @default("groq")
   language     String?

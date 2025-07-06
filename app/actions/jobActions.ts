@@ -27,6 +27,15 @@ export async function startTranscriptionJob(params: StartFileJobParams) {
     return {success: false, error: "Unauthorized"};
   }
 
+  const userExists = await prisma.user.findUnique({where: {id: userId}});
+  if (!userExists) {
+    return {
+      success: false,
+      error:
+        "User session is invalid or user not found. Please sign out and sign back in.",
+    };
+  }
+
   const {blobUrl, originalFileName, fileSize, fileHash, transcriptionMode} =
     params;
 
@@ -73,6 +82,15 @@ export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
 
   if (!userId) {
     return {success: false, error: "Unauthorized"};
+  }
+
+  const userExists = await prisma.user.findUnique({where: {id: userId}});
+  if (!userExists) {
+    return {
+      success: false,
+      error:
+        "User session is invalid or user not found. Please sign out and sign back in.",
+    };
   }
 
   const {linkUrl, transcriptionMode} = params;
