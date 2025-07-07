@@ -7,6 +7,7 @@ import type {TranscriptionMode} from "@/components/ConfirmationView";
 import {transcribeAudioAction} from "@/actions/transcribeAudioAction";
 import {del} from "@vercel/blob";
 import * as fs from "node:fs/promises";
+import {revalidatePath} from "next/cache";
 
 // REMOVED: const prisma = new PrismaClient();
 
@@ -29,24 +30,22 @@ export const processTranscription = inngest.createFunction(
       throw new Error(`Job with ID ${jobId} not found.`);
     }
 
-    // --- FIX: This variable will hold the path to the temp audio file ---
     let tempAudioPath: string | null = null;
 
     try {
-      await step.run("update-status-to-processing", async () => {
-        return prisma.transcriptionJob.update({
+      await step.run("update-status-to-processing", async () =>
+        prisma.transcriptionJob.update({
           where: {id: jobId},
           data: {
             status: "PROCESSING",
             startedAt: new Date(),
             processingSubStage: "PREPARING_AUDIO",
           },
-        });
-      });
+        })
+      );
 
       // --- STEP 1: Prepare Audio, returning the file path ---
       const preparationResult = await step.run("prepare-audio", async () => {
-        // 'mode' is not needed here, so it is removed.
         return isLinkJob
           ? await prepareAudioFromLink(job.fileUrl)
           : await prepareAudioFromFileBlob(job.fileUrl, job.sourceFileName);
@@ -56,8 +55,27 @@ export const processTranscription = inngest.createFunction(
         throw new Error(preparationResult.error);
       }
 
-      // --- FIX: Store the path for cleanup in the 'finally' block ---
       tempAudioPath = preparationResult.tempAudioPath;
+
+      if (
+        isLinkJob &&
+        "displayTitle" in preparationResult &&
+        preparationResult.displayTitle
+      ) {
+        await step.run("update-job-title", async () =>
+          prisma.transcriptionJob.update({
+            where: {id: jobId},
+            data: {
+              displayTitle: preparationResult.displayTitle as string,
+              sourceFileName: preparationResult.displayTitle as string,
+            },
+          })
+        );
+        await step.sendEvent("send-revalidation", {
+          name: "app/revalidate",
+          data: {path: "/"},
+        });
+      }
 
       await step.run("update-substage-to-transcribing", async () => {
         return prisma.transcriptionJob.update({
@@ -68,20 +86,17 @@ export const processTranscription = inngest.createFunction(
 
       // --- STEP 2: Transcribe Audio using the file path ---
       const transcriptionResult = await step.run(
-        "transcribe-with-groq",
+        "transcribe-audio",
         async () => {
-          // --- FIX: Read the file from the path to get a fresh Buffer ---
           const audioBuffer = await fs.readFile(
             preparationResult.tempAudioPath
           );
           const formData = new FormData();
-          const audioBlob = new Blob([audioBuffer], {type: "audio/opus"});
           formData.append(
             "audioBlob",
-            audioBlob,
+            new Blob([audioBuffer], {type: "audio/opus"}),
             preparationResult.audioFileName
           );
-
           return await transcribeAudioAction(
             formData,
             job.engineUsed as TranscriptionMode
@@ -158,5 +173,14 @@ export const processTranscription = inngest.createFunction(
     }
 
     return {success: true, message: `Job ${jobId} completed successfully.`};
+  }
+);
+
+export const revalidatePathFunction = inngest.createFunction(
+  {id: "revalidate-path-on-demand"},
+  {event: "app/revalidate"}, // This will now be correctly typed
+  async ({event}) => {
+    revalidatePath(event.data.path);
+    return {revalidated: true, path: event.data.path};
   }
 );

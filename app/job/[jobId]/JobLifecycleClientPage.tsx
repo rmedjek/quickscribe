@@ -1,4 +1,4 @@
-// app/dashboard/job/[jobId]/JobLifecycleClientPage.tsx
+// app/job/[jobId]/JobLifecycleClientPage.tsx
 "use client";
 
 import type {TranscriptionJob} from "@prisma/client";

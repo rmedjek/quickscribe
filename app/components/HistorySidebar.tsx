@@ -85,16 +85,13 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
               className="group flex h-full w-full items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700/50"
               aria-label="Expand sidebar"
             >
-              <QuickScribeStaticLogo
-                className="h-7 w-auto group-hover:hidden"
-                color="#0ea5e9"
-              />
+              <QuickScribeStaticLogo className="h-7 w-auto group-hover:hidden text-[var(--text-primary)]" />
               <SidebarToggleIcon className="hidden group-hover:block rotate-180 " />
             </button>
           ) : (
             <>
               <Link href="/" aria-label="Home">
-                <QuickScribeStaticLogo className="h-7 w-auto" color="#0ea5e9" />
+                <QuickScribeStaticLogo className="h-7 w-auto" />
               </Link>
               <button
                 onClick={() => setIsCollapsed(true)}
@@ -111,14 +108,14 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
         <div className={clsx("p-3 space-y-1", isCollapsed && "hidden")}>
           <Link
             href="/"
-            className="flex w-full items-center rounded-md p-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-slate-100 dark:hover:bg-slate-700/50"
+            className="flex w-full items-center rounded-md p-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-700"
           >
             <FilePenLine size={18} className="mr-3" />
             New Transcription
           </Link>
           <button
             onClick={() => setIsSearchModalOpen(true)}
-            className="flex w-full items-center rounded-md p-2 text-left text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-slate-100 dark:hover:bg-slate-700/50"
+            className="flex w-full items-center rounded-md p-2 text-left text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-700"
           >
             <Search size={18} className="mr-3" />
             Search
@@ -153,8 +150,8 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                   className={clsx(
                     "group relative flex items-center justify-between rounded-md p-2 text-sm transition-colors",
                     isActive
-                      ? "bg-slate-200 dark:bg-slate-700 font-semibold"
-                      : "hover:bg-slate-100 dark:hover:bg-slate-700/50"
+                      ? "bg-slate-200 dark:bg-slate-800 font-semibold" // Use a darker background for active in dark mode
+                      : "hover:bg-slate-200/60 dark:hover:bg-slate-700" // Use a subtle, solid hover for both modes
                   )}
                 >
                   <Link
@@ -190,8 +187,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                   {openMenuId === job.id && (
                     <div
                       ref={menuRef}
-                      // This positioning is now correct relative to the parent div
-                      className="absolute right-2 top-10 z-10 w-40 rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      className="absolute right-2 top-full z-10 mt-1 w-32 rounded-lg border border-[var(--border-color)] bg-[var(--card-bg)] p-1 shadow-xl"
                     >
                       <button
                         onClick={() => {
@@ -200,9 +196,9 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                           setIsRenameModalOpen(true);
                           setOpenMenuId(null);
                         }}
-                        className="flex w-full items-center px-3 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
+                        className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-slate-200/60 dark:hover:bg-slate-700"
                       >
-                        <Edit size={14} className="mr-2" />
+                        <Edit size={14} className="mr-2.5" />
                         Rename
                       </button>
                       <button
@@ -211,9 +207,9 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                           setIsDeleteModalOpen(true);
                           setOpenMenuId(null);
                         }}
-                        className="flex w-full items-center px-3 py-1.5 text-left text-sm text-red-600 hover:bg-slate-100 dark:text-red-400 dark:hover:bg-slate-700"
+                        className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm text-red-500 transition-colors hover:bg-red-500/10"
                       >
-                        <Trash2 size={14} className="mr-2" />
+                        <Trash2 size={14} className="mr-2.5" />
                         Delete
                       </button>
                     </div>

@@ -63,7 +63,7 @@ export async function startTranscriptionJob(params: StartFileJobParams) {
     console.log(
       `[JobAction] Created FILE job ${newJob.id} and sent 'transcription.requested' event.`
     );
-    revalidatePath("/dashboard");
+    // revalidatePath("/dashboard");
     return {success: true, jobId: newJob.id};
   } catch (error) {
     console.error("Error creating file transcription job:", error);
@@ -118,7 +118,7 @@ export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
     console.log(
       `[JobAction] Created LINK job ${newJob.id} and sent 'transcription.requested' event.`
     );
-    revalidatePath("/dashboard");
+    // revalidatePath("/dashboard");
     return {success: true, jobId: newJob.id};
   } catch (error) {
     console.error("Error creating link transcription job:", error);
@@ -184,7 +184,7 @@ export async function deleteJobAction(jobId: string) {
     console.log(`[JobAction] Deleted job ${jobId} for user ${userId}`);
 
     // Revalidate the dashboard path to update the UI.
-    revalidatePath("/dashboard");
+    // revalidatePath("/dashboard");
     return {success: true};
   } catch (error) {
     console.error("Error deleting transcription job:", error);
