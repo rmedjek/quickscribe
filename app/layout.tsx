@@ -7,8 +7,6 @@ import {auth} from "@/lib/auth";
 import HistorySidebar from "@/components/HistorySidebar";
 import prisma from "@/lib/prisma";
 import UserNav from "@/components/UserNav";
-// REMOVED: No longer importing DarkModeToggle here
-// import DarkModeToggle from "@/components/DarkModeToggle";
 
 const inter = Inter({subsets: ["latin"]});
 
@@ -31,30 +29,35 @@ export default async function RootLayout({
     : [];
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className="h-full">
       <body
-        className={`${inter.className} antialiased bg-slate-50 dark:bg-slate-900`}
+        className={`${inter.className} h-full bg-[var(--page-bg)] text-[var(--text-primary)]`}
       >
         <SessionProvider session={session}>
           <ThemeProvider>
-            {session?.user ? (
-              <div className="flex h-screen w-full overflow-hidden">
-                <HistorySidebar jobs={jobs} />
-                <div className="flex-1 flex flex-col h-screen">
-                  {/* --- THIS IS THE FIX: The header is now simpler --- */}
-                  <header
-                    className="flex h-16 items-center justify-end gap-4   px-6 flex-shrink-0 z-10 drop-shadow-md
-                  bg-[var(--sidebar-bg)] border-[var(--border-color)]"
+            <div className="h-full w-full overflow-hidden">
+              {session?.user ? (
+                <div className="flex h-full w-full">
+                  <HistorySidebar jobs={jobs} />
+                  <div
+                    id="main-content-scroll-container"
+                    className="flex-1 overflow-y-auto"
                   >
-                    <UserNav />
-                  </header>
-                  {/* --- END FIX --- */}
-                  <main className="flex-1 overflow-y-auto">{children}</main>
+                    <header
+                      id="page-header"
+                      className="sticky top-0 z-10 flex h-16 shrink-0 items-center justify-end bg-[var(--header-bg)] px-6"
+                    >
+                      <UserNav />
+                    </header>
+                    <main>{children}</main>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="w-full h-screen">{children}</div>
-            )}
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  {children}
+                </div>
+              )}
+            </div>
           </ThemeProvider>
         </SessionProvider>
       </body>
