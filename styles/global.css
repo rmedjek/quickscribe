@@ -1,7 +1,7 @@
 @import "tailwindcss";
 :root {
-  --page-bg: theme(colors.slate.50);      /* Light gray page background */
-  --header-bg: var(--page-bg);              /* FIX: Header matches page bg */
+  --page-bg: theme(colors.slate.50);
+  --header-bg: var(--page-bg);
   --sidebar-bg: theme(colors.white);
   --card-bg: theme(colors.white);
   --card-secondary-bg: theme(colors.slate.100);
@@ -10,12 +10,14 @@
   --text-primary: theme(colors.slate.800);
   --text-secondary: theme(colors.slate.500);
   --border-color: theme(colors.slate.200);
+
+  --header-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); 
 }
 
 /* --- Dark Mode Theme --- */
 html.dark {
   --page-bg: #212121;
-  --header-bg: var(--page-bg);              /* FIX: Header matches page bg */
+  --header-bg: var(--page-bg);  
   --sidebar-bg: #181818;
   --card-bg: #303030;
   --card-secondary-bg: theme(colors.slate.700);
@@ -24,6 +26,8 @@ html.dark {
   --text-primary: theme(colors.slate.50);
   --text-secondary: theme(colors.slate.400);
   --border-color: theme(colors.slate.700);
+
+   --header-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.2);
 }
 
 body {
@@ -65,7 +69,7 @@ body {
   50% {
     /* For light mode - Tailwind: bg-sky-100 */
     background-color: #e0f2fe; 
-    /* For dark mode, you might want a different highlight or handle it via JS/Tailwind dark variant */
+    /* For dark mode, we might want a different highlight or handle it via JS/Tailwind dark variant */
   }
   100% {
     background-color: transparent; /* Or back to initial accordion item bg */

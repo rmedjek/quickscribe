@@ -6,7 +6,8 @@ import SessionProvider from "./components/SessionProvider";
 import {auth} from "@/lib/auth";
 import HistorySidebar from "@/components/HistorySidebar";
 import prisma from "@/lib/prisma";
-import UserNav from "@/components/UserNav";
+import DynamicHeader from "@/components/DynamicHeader";
+import {PageProvider} from "@/app/contexts/PageContext";
 
 const inter = Inter({subsets: ["latin"]});
 
@@ -23,7 +24,7 @@ export default async function RootLayout({
   const session = await auth();
   const jobs = session?.user?.id
     ? await prisma.transcriptionJob.findMany({
-        where: {userId: session.user.id},
+        where: {userId: session.user.id, status: "COMPLETED"},
         orderBy: {createdAt: "desc"},
       })
     : [];
@@ -37,21 +38,20 @@ export default async function RootLayout({
           <ThemeProvider>
             <div className="h-full w-full overflow-hidden">
               {session?.user ? (
-                <div className="flex h-full w-full">
-                  <HistorySidebar jobs={jobs} />
-                  <div
-                    id="main-content-scroll-container"
-                    className="flex-1 overflow-y-auto"
-                  >
-                    <header
-                      id="page-header"
-                      className="sticky top-0 z-10 flex h-16 shrink-0 items-center justify-end bg-[var(--header-bg)] px-6"
+                <PageProvider>
+                  <div className="flex h-full w-full">
+                    <HistorySidebar jobs={jobs} />
+                    <div
+                      id="main-content-scroll-container"
+                      className="flex-1 overflow-y-auto"
                     >
-                      <UserNav />
-                    </header>
-                    <main>{children}</main>
+                      <DynamicHeader />
+                      <div className="relative isolate">
+                        <main>{children}</main>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </PageProvider>
               ) : (
                 <div className="flex h-full w-full items-center justify-center">
                   {children}

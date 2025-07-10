@@ -1,4 +1,4 @@
-// app/dashboard/job/[jobId]/JobLifecycleClientPage.tsx
+// app/job/[jobId]/JobLifecycleClientPage.tsx
 "use client";
 
 import type {TranscriptionJob} from "@prisma/client";
@@ -8,14 +8,27 @@ import ProcessingView from "@/components/ProcessingView";
 import ResultsView from "@/components/ResultsView";
 import {APP_STEPS, type StageDisplayData} from "@/types/app";
 import type {TranscriptionMode} from "@/components/ConfirmationView";
-import {getJobAction} from "@/actions/jobActions";
 import {useEffect, useMemo} from "react";
 import {StepperProvider, useStepper} from "@/app/contexts/StepperContext";
+import {usePage} from "@/app/contexts/PageContext";
 
 function JobStatusDisplay({initialJob}: {initialJob: TranscriptionJob}) {
   const router = useRouter();
-  const job = useJobStatus(initialJob, getJobAction); // This hook correctly polls for data.
-  const {setStep, step} = useStepper();
+  const {job, refetchJob} = useJobStatus(initialJob);
+  const {step, setStep} = useStepper();
+  const {setPageTitle, setRefetcher} = usePage();
+
+  useEffect(() => {
+    setRefetcher(() => refetchJob);
+    return () => setRefetcher(() => () => {});
+  }, [refetchJob, setRefetcher]);
+
+  useEffect(() => {
+    setPageTitle(job.displayTitle || job.sourceFileName, job.id);
+    return () => {
+      setPageTitle("", null);
+    };
+  }, [job, setPageTitle]);
 
   useEffect(() => {
     if (job?.status === "COMPLETED" || job?.status === "FAILED") {
@@ -25,13 +38,11 @@ function JobStatusDisplay({initialJob}: {initialJob: TranscriptionJob}) {
     }
   }, [job?.status, setStep]);
 
-  // --- THIS IS THE DEFINITIVE FIX for stage transitions ---
   const {stage, overallStatusMessage} = useMemo((): {
     stage: StageDisplayData | null;
     overallStatusMessage: string;
   } => {
     if (!job) return {stage: null, overallStatusMessage: "Loading..."};
-
     switch (job.status) {
       case "PENDING":
         return {
@@ -45,7 +56,6 @@ function JobStatusDisplay({initialJob}: {initialJob: TranscriptionJob}) {
           },
         };
       case "PROCESSING":
-        // This logic now correctly reads the sub-stage from the database.
         if (job.processingSubStage === "TRANSCRIBING") {
           return {
             overallStatusMessage: "AI is creating your transcript...",
@@ -59,7 +69,6 @@ function JobStatusDisplay({initialJob}: {initialJob: TranscriptionJob}) {
             },
           };
         }
-        // The default sub-stage is preparing the file.
         return {
           overallStatusMessage: "Preparing your audio file...",
           stage: {
@@ -75,7 +84,6 @@ function JobStatusDisplay({initialJob}: {initialJob: TranscriptionJob}) {
         return {stage: null, overallStatusMessage: ""};
     }
   }, [job]);
-  // --- END FIX ---
 
   if (!job)
     return <div className="p-8 text-center">Loading Job Details...</div>;

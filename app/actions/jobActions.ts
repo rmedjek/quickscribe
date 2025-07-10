@@ -7,10 +7,6 @@ import {revalidatePath} from "next/cache";
 import {TranscriptionMode} from "@/components/ConfirmationView";
 import {inngest} from "@/inngest/client";
 import {del} from "@vercel/blob";
-
-// REMOVED: const prisma = new PrismaClient();
-
-// ... rest of the file remains the same
 interface StartFileJobParams {
   blobUrl: string;
   originalFileName: string;
@@ -63,7 +59,6 @@ export async function startTranscriptionJob(params: StartFileJobParams) {
     console.log(
       `[JobAction] Created FILE job ${newJob.id} and sent 'transcription.requested' event.`
     );
-    // revalidatePath("/dashboard");
     return {success: true, jobId: newJob.id};
   } catch (error) {
     console.error("Error creating file transcription job:", error);
@@ -79,21 +74,27 @@ interface StartLinkJobParams {
 export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
   const session = await auth();
   const userId = session?.user?.id;
+  if (!userId) return {success: false, error: "Unauthorized"};
 
-  if (!userId) {
-    return {success: false, error: "Unauthorized"};
+  const {linkUrl, transcriptionMode} = params;
+
+  const existingJob = await prisma.transcriptionJob.findFirst({
+    where: {userId, fileUrl: linkUrl, status: "COMPLETED"},
+  });
+
+  if (existingJob) {
+    console.log(
+      `[JobAction] Found existing COMPLETED job ${existingJob.id} for link ${linkUrl}. Redirecting.`
+    );
+    return {success: true, jobId: existingJob.id};
   }
 
   const userExists = await prisma.user.findUnique({where: {id: userId}});
-  if (!userExists) {
+  if (!userExists)
     return {
       success: false,
-      error:
-        "User session is invalid or user not found. Please sign out and sign back in.",
+      error: "User session invalid. Please sign out and sign back in.",
     };
-  }
-
-  const {linkUrl, transcriptionMode} = params;
 
   try {
     const newJob = await prisma.transcriptionJob.create({
@@ -106,19 +107,12 @@ export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
         engineUsed: transcriptionMode,
       },
     });
-
     await inngest.send({
       name: "transcription.requested",
-      data: {
-        jobId: newJob.id,
-        isLinkJob: true,
-      },
+      data: {jobId: newJob.id, isLinkJob: true},
     });
-
-    console.log(
-      `[JobAction] Created LINK job ${newJob.id} and sent 'transcription.requested' event.`
-    );
-    // revalidatePath("/dashboard");
+    console.log(`[JobAction] Created NEW LINK job ${newJob.id}.`);
+    // No revalidate here, we let the Inngest worker do it after fetching the title.
     return {success: true, jobId: newJob.id};
   } catch (error) {
     console.error("Error creating link transcription job:", error);
@@ -144,7 +138,6 @@ export async function getJobAction(jobId: string) {
   return job;
 }
 
-// --- NEW ACTION: To delete a transcription job ---
 export async function deleteJobAction(jobId: string) {
   const session = await auth();
   const userId = session?.user?.id;
@@ -182,9 +175,6 @@ export async function deleteJobAction(jobId: string) {
     });
 
     console.log(`[JobAction] Deleted job ${jobId} for user ${userId}`);
-
-    // Revalidate the dashboard path to update the UI.
-    // revalidatePath("/dashboard");
     return {success: true};
   } catch (error) {
     console.error("Error deleting transcription job:", error);
@@ -203,13 +193,13 @@ export async function renameJobAction(jobId: string, newTitle: string) {
     });
     if (!job) return {success: false, error: "Job not found"};
 
-    await prisma.transcriptionJob.update({
+    const updatedJob = await prisma.transcriptionJob.update({
       where: {id: jobId},
       data: {displayTitle: newTitle},
     });
 
-    revalidatePath("/"); // Revalidate the root layout to update the sidebar
-    return {success: true};
+    revalidatePath("/");
+    return {success: true, updatedJob: updatedJob};
   } catch (error) {
     console.error("Error renaming transcription job:", error);
     return {success: false, error: "Failed to rename job."};

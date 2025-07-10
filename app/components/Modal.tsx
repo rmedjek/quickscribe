@@ -3,20 +3,28 @@
 
 import React, {ReactNode, useEffect} from "react";
 import {X} from "lucide-react";
+import clsx from "clsx";
 
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
-  title: string;
+  title?: string;
   children: ReactNode;
+  position?: "center" | "top"; // New prop for positioning
+  size?: "sm" | "md" | "lg"; // New prop for width
 }
 
-const Modal: React.FC<ModalProps> = ({isOpen, onClose, title, children}) => {
+const Modal: React.FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  title = "",
+  children,
+  position = "center",
+  size = "md",
+}) => {
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
+      if (event.key === "Escape") onClose();
     };
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -28,23 +36,33 @@ const Modal: React.FC<ModalProps> = ({isOpen, onClose, title, children}) => {
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) {
-    return null;
-  }
+  if (!isOpen) return null;
+
+  const sizeClasses = {
+    sm: "max-w-md",
+    md: "max-w-2xl",
+    lg: "max-w-4xl",
+  };
 
   return (
+    // --- THIS IS THE FIX: The background is now a separate div, and vertical alignment is dynamic ---
     <div
-      // The background overlay is now gone
-      className="fixed inset-0 z-50 flex justify-center items-start pt-20"
+      className={clsx(
+        "fixed inset-0 z-50 flex p-4 justify-center",
+        position === "center" ? "items-center" : "items-start pt-20"
+      )}
       onClick={onClose}
       aria-modal="true"
       role="dialog"
     >
+      <div className="fixed inset-0 bg-black/50" aria-hidden="true" />
       <div
-        className="bg-[var(--card-bg)] text-[var(--text-primary)] border border-[var(--border-color)] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+        className={clsx(
+          "relative z-10 w-full flex flex-col bg-[var(--card-bg)] text-[var(--text-primary)] rounded-2xl shadow-xl",
+          sizeClasses[size]
+        )}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* The header is now conditional, allowing it to be hidden */}
         {title && (
           <div className="flex justify-between items-center p-4 border-b border-[var(--border-color)] flex-shrink-0">
             <h2 className="text-lg font-semibold">{title}</h2>
@@ -57,10 +75,10 @@ const Modal: React.FC<ModalProps> = ({isOpen, onClose, title, children}) => {
             </button>
           </div>
         )}
-        {/* The body no longer has default padding */}
         <div className="flex-1 overflow-y-auto">{children}</div>
       </div>
     </div>
+    // --- END FIX ---
   );
 };
 

@@ -9,15 +9,9 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
-    "db:push": "dotenv -e .env.local -- npx prisma db push",
-    "db:studio": "dotenv -e .env.local -- npx prisma studio",
-    "db:generate": "dotenv -e .env.local -- npx prisma generate",
-    "db:start": "colima start && docker-compose up -d",
-    "db:stop": "docker-compose down",
-    "db:push:dev": "dotenv -e .env.development.local -- npx prisma db push",
-    "db:studio:dev": "dotenv -e .env.development.local -- npx prisma studio",
-    "db:migrate:create": "npx dotenv-cli -e .env.development.local -- npx prisma migrate dev --create-only --name add_fts_for_transcripts",
-    "db:reset": "npx dotenv-cli -e .env.development.local -- npx prisma migrate reset"
+    "db:generate": "npx prisma generate",
+    "db:migrate": "npx dotenv-cli -e .env.local -- npx prisma migrate dev",
+    "db:studio": "npx dotenv-cli -e .env.local -- npx prisma studio"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.2.0",

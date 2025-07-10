@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import {usePathname} from "next/navigation";
+import {usePathname, useRouter} from "next/navigation";
 import {useState, useRef, useEffect} from "react";
 import type {TranscriptionJob} from "@prisma/client";
 import {
@@ -11,7 +11,6 @@ import {
   MoreHorizontal,
   Edit,
   Trash2,
-  AlertTriangle,
   Search,
   FilePenLine,
 } from "lucide-react";
@@ -22,6 +21,7 @@ import StyledButton from "./StyledButton";
 import SidebarToggleIcon from "./icons/SidebarToggleIcon";
 import QuickScribeStaticLogo from "./icons/QuickScribeStaticLogo";
 import SearchModal from "./SearchModal";
+import {usePage} from "../contexts/PageContext";
 
 export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -34,8 +34,9 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [jobToDelete, setJobToDelete] = useState<TranscriptionJob | null>(null);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-
+  const {triggerRefetch} = usePage();
   const pathSegments = pathname.split("/");
+  const router = useRouter();
   const activeJobId =
     pathSegments.length === 3 && pathSegments[1] === "job"
       ? pathSegments[2]
@@ -53,7 +54,12 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
 
   const handleRename = async () => {
     if (!jobToEdit || !newTitle.trim()) return;
-    await renameJobAction(jobToEdit.id, newTitle.trim());
+    const result = await renameJobAction(jobToEdit.id, newTitle.trim());
+    if (result.success) {
+      if (jobToEdit.id === activeJobId) {
+        triggerRefetch();
+      }
+    }
     setIsRenameModalOpen(false);
     setJobToEdit(null);
   };
@@ -63,6 +69,7 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
     await deleteJobAction(jobToDelete.id);
     setIsDeleteModalOpen(false);
     setJobToDelete(null);
+    router.refresh();
   };
 
   return (
@@ -150,8 +157,8 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                   className={clsx(
                     "group relative flex items-center justify-between rounded-md p-2 text-sm transition-colors",
                     isActive
-                      ? "bg-slate-200 dark:bg-slate-800 font-semibold" // Use a darker background for active in dark mode
-                      : "hover:bg-slate-200/60 dark:hover:bg-slate-700" // Use a subtle, solid hover for both modes
+                      ? "bg-slate-200 dark:bg-slate-800 font-semibold"
+                      : "hover:bg-slate-200/60 dark:hover:bg-slate-700"
                   )}
                 >
                   <Link
@@ -224,60 +231,62 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
       <Modal
         isOpen={isRenameModalOpen}
         onClose={() => setIsRenameModalOpen(false)}
-        title="Rename Transcription"
+        title=""
       >
-        <div className="space-y-4">
+        <div className="space-y-4 p-4">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+            Rename Transcription
+          </h2>
           <input
             type="text"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-slate-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="w-full px-3 py-2 bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg text-base focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newTitle.trim()) {
+                handleRename();
+              }
+            }}
           />
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pt-2">
             <StyledButton
               variant="secondary"
               onClick={() => setIsRenameModalOpen(false)}
             >
               Cancel
             </StyledButton>
-            <StyledButton onClick={handleRename}>Save</StyledButton>
+            <StyledButton onClick={handleRename} disabled={!newTitle.trim()}>
+              Save
+            </StyledButton>
           </div>
         </div>
       </Modal>
       <Modal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        title="Delete Transcription?"
+        size="sm" // Use a smaller modal width
+        position="center" // Ensure it's centered
       >
-        <div className="space-y-6">
-          <div className="flex items-start space-x-3">
-            <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 sm:h-8 sm:w-8">
-              <AlertTriangle
-                className="h-6 w-6 text-red-600 dark:text-red-400"
-                aria-hidden="true"
-              />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm text-[var(--text-secondary)]">
-                Are you sure you want to delete this transcription?
-                <br />
-                <strong className="font-medium text-[var(--text-primary)] break-all">
-                  {jobToDelete?.displayTitle || jobToDelete?.sourceFileName}
-                </strong>
-                <br />
-                This action cannot be undone.
-              </p>
-            </div>
+        <div className="p-6 text-left">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+            Delete Transcription?
+          </h2>
+          <div className="mt-2 mb-6">
+            <p className="text-sm text-[var(--text-primary)]">
+              Are you sure you want to delete this transcription? This action
+              cannot be undone.
+            </p>
           </div>
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row-reverse">
+            <StyledButton variant="danger" onClick={handleDeleteConfirm}>
+              Delete
+            </StyledButton>
             <StyledButton
               variant="secondary"
               onClick={() => setIsDeleteModalOpen(false)}
             >
               Cancel
-            </StyledButton>
-            <StyledButton variant="danger" onClick={handleDeleteConfirm}>
-              Delete Transcription
             </StyledButton>
           </div>
         </div>
