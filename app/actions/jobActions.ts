@@ -7,63 +7,37 @@ import {revalidatePath} from "next/cache";
 import {TranscriptionMode} from "@/components/ConfirmationView";
 import {inngest} from "@/inngest/client";
 import {del} from "@vercel/blob";
+
 interface StartFileJobParams {
   blobUrl: string;
   originalFileName: string;
-  fileSize: number;
   fileHash: string;
   transcriptionMode: TranscriptionMode;
 }
 
 export async function startTranscriptionJob(params: StartFileJobParams) {
   const session = await auth();
-  const userId = session?.user?.id;
+  if (!session?.user?.id) return {success: false, error: "Unauthorized"};
 
-  if (!userId) {
-    return {success: false, error: "Unauthorized"};
-  }
+  const {fileHash} = params;
 
-  const userExists = await prisma.user.findUnique({where: {id: userId}});
-  if (!userExists) {
-    return {
-      success: false,
-      error:
-        "User session is invalid or user not found. Please sign out and sign back in.",
-    };
-  }
+  // Use the file hash as a temporary, unique ID for this job submission
+  const tempJobId = fileHash;
 
-  const {blobUrl, originalFileName, fileSize, fileHash, transcriptionMode} =
-    params;
+  await inngest.send({
+    name: "media.submitted",
+    data: {...params, userId: session.user.id, isLinkJob: false, tempJobId},
+  });
 
-  try {
-    const newJob = await prisma.transcriptionJob.create({
-      data: {
-        userId,
-        status: "PENDING",
-        fileUrl: blobUrl,
-        sourceFileName: originalFileName,
-        sourceFileSize: fileSize,
-        sourceFileHash: fileHash,
-        engineUsed: transcriptionMode,
-      },
-    });
+  console.log(
+    `[JobAction] Sent "media.submitted" event for tempJobId: ${tempJobId}`
+  );
+  return {success: true, tempJobId: tempJobId};
+}
 
-    await inngest.send({
-      name: "transcription.requested",
-      data: {
-        jobId: newJob.id,
-        isLinkJob: false,
-      },
-    });
-
-    console.log(
-      `[JobAction] Created FILE job ${newJob.id} and sent 'transcription.requested' event.`
-    );
-    return {success: true, jobId: newJob.id};
-  } catch (error) {
-    console.error("Error creating file transcription job:", error);
-    return {success: false, error: "Failed to create job in database."};
-  }
+interface StartLinkJobParams {
+  linkUrl: string;
+  transcriptionMode: TranscriptionMode;
 }
 
 interface StartLinkJobParams {
@@ -73,69 +47,29 @@ interface StartLinkJobParams {
 
 export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
   const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) return {success: false, error: "Unauthorized"};
+  if (!session?.user?.id) return {success: false, error: "Unauthorized"};
 
-  const {linkUrl, transcriptionMode} = params;
+  // Create a temporary ID from a hash of the URL for link jobs
+  const tempJobId = Buffer.from(params.linkUrl).toString("base64");
 
-  const existingJob = await prisma.transcriptionJob.findFirst({
-    where: {userId, fileUrl: linkUrl, status: "COMPLETED"},
+  await inngest.send({
+    name: "media.submitted",
+    data: {...params, userId: session.user.id, isLinkJob: true, tempJobId},
   });
 
-  if (existingJob) {
-    console.log(
-      `[JobAction] Found existing COMPLETED job ${existingJob.id} for link ${linkUrl}. Redirecting.`
-    );
-    return {success: true, jobId: existingJob.id};
-  }
-
-  const userExists = await prisma.user.findUnique({where: {id: userId}});
-  if (!userExists)
-    return {
-      success: false,
-      error: "User session invalid. Please sign out and sign back in.",
-    };
-
-  try {
-    const newJob = await prisma.transcriptionJob.create({
-      data: {
-        userId,
-        status: "PENDING",
-        fileUrl: linkUrl,
-        sourceFileName: linkUrl,
-        sourceFileSize: 0,
-        engineUsed: transcriptionMode,
-      },
-    });
-    await inngest.send({
-      name: "transcription.requested",
-      data: {jobId: newJob.id, isLinkJob: true},
-    });
-    console.log(`[JobAction] Created NEW LINK job ${newJob.id}.`);
-    // No revalidate here, we let the Inngest worker do it after fetching the title.
-    return {success: true, jobId: newJob.id};
-  } catch (error) {
-    console.error("Error creating link transcription job:", error);
-    return {success: false, error: "Failed to create job in database."};
-  }
+  console.log(
+    `[JobAction] Sent "media.submitted" event for tempJobId: ${tempJobId}`
+  );
+  return {success: true, tempJobId: tempJobId};
 }
 
 export async function getJobAction(jobId: string) {
   const session = await auth();
   const userId = session?.user?.id;
-
-  if (!userId) {
-    return null;
-  }
-
-  const job = await prisma.transcriptionJob.findFirst({
-    where: {
-      id: jobId,
-      userId: userId,
-    },
+  if (!userId) return null;
+  return await prisma.transcriptionJob.findFirst({
+    where: {id: jobId, userId: userId},
   });
-
-  return job;
 }
 
 export async function deleteJobAction(jobId: string) {
@@ -145,6 +79,7 @@ export async function deleteJobAction(jobId: string) {
   if (!userId) {
     return {success: false, error: "Unauthorized"};
   }
+  if (!session?.user?.id) return {success: false, error: "Unauthorized"};
 
   try {
     const jobToDelete = await prisma.transcriptionJob.findUnique({

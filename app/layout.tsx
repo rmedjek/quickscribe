@@ -8,6 +8,7 @@ import HistorySidebar from "@/components/HistorySidebar";
 import prisma from "@/lib/prisma";
 import DynamicHeader from "@/components/DynamicHeader";
 import {PageProvider} from "@/app/contexts/PageContext";
+import ThemeScript from "./components/ThemeScript";
 
 const inter = Inter({subsets: ["latin"]});
 
@@ -31,6 +32,9 @@ export default async function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning className="h-full">
+      <head>
+        <ThemeScript /> {/* <-- ADD THIS SCRIPT HERE */}
+      </head>
       <body
         className={`${inter.className} h-full bg-[var(--page-bg)] text-[var(--text-primary)]`}
       >

@@ -10,18 +10,18 @@ interface ModalProps {
   onClose: () => void;
   title?: string;
   children: ReactNode;
-  position?: "center" | "top"; // New prop for positioning
-  size?: "sm" | "md" | "lg"; // New prop for width
+  size?: "md" | "sm";
+  position?: "top" | "center";
 }
 
-const Modal: React.FC<ModalProps> = ({
+export default function Modal({
   isOpen,
   onClose,
-  title = "",
+  title,
   children,
-  position = "center",
   size = "md",
-}) => {
+  position = "top",
+}: ModalProps) {
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -38,31 +38,30 @@ const Modal: React.FC<ModalProps> = ({
 
   if (!isOpen) return null;
 
-  const sizeClasses = {
-    sm: "max-w-md",
-    md: "max-w-2xl",
-    lg: "max-w-4xl",
-  };
+  const containerClasses = clsx(
+    "fixed inset-0 z-50 flex justify-center p-4 transition-opacity",
+    {
+      "items-start pt-20": position === "top",
+      "items-center": position === "center",
+    }
+  );
+
+  const modalClasses = clsx(
+    "bg-[var(--card-bg)] text-[var(--text-primary)] border border-[var(--border-color)] rounded-xl shadow-2xl w-full flex flex-col",
+    {
+      "max-w-2xl max-h-[80vh]": size === "md",
+      "max-w-md": size === "sm",
+    }
+  );
 
   return (
-    // --- THIS IS THE FIX: The background is now a separate div, and vertical alignment is dynamic ---
     <div
-      className={clsx(
-        "fixed inset-0 z-50 flex p-4 justify-center",
-        position === "center" ? "items-center" : "items-start pt-20"
-      )}
+      className={containerClasses}
       onClick={onClose}
       aria-modal="true"
       role="dialog"
     >
-      <div className="fixed inset-0 bg-black/50" aria-hidden="true" />
-      <div
-        className={clsx(
-          "relative z-10 w-full flex flex-col bg-[var(--card-bg)] text-[var(--text-primary)] rounded-2xl shadow-xl",
-          sizeClasses[size]
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className={modalClasses} onClick={(e) => e.stopPropagation()}>
         {title && (
           <div className="flex justify-between items-center p-4 border-b border-[var(--border-color)] flex-shrink-0">
             <h2 className="text-lg font-semibold">{title}</h2>
@@ -78,8 +77,5 @@ const Modal: React.FC<ModalProps> = ({
         <div className="flex-1 overflow-y-auto">{children}</div>
       </div>
     </div>
-    // --- END FIX ---
   );
-};
-
-export default Modal;
+}

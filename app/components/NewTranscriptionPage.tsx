@@ -65,54 +65,52 @@ function NewTranscriptionContent() {
     setView(ViewState.Submitting);
     setStep("process");
     setError(null);
-    let result: {success: boolean; jobId?: string; error?: string};
+    let result: {success: boolean; tempJobId?: string; error?: string};
 
     try {
       if (file) {
         setStatusText("Uploading your file...");
+        // --- THIS IS THE FIX: Set the initial stage for the progress bar ---
         setActiveStage({
           name: "upload",
           label: "Uploading File",
           progress: 0,
           isActive: true,
-          isIndeterminate: false,
-          subText: "0%",
         });
+
         const blob = await upload(file.name, file, {
           access: "public",
           handleUploadUrl: "/api/client-upload",
           onUploadProgress: (p) => {
             setActiveStage((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    progress: p.percentage / 100,
-                  }
-                : null
+              prev ? {...prev, progress: p.percentage / 100} : null
             );
           },
         });
+
         setStatusText("Creating your job...");
+        // After upload, switch to an indeterminate state
         setActiveStage({
           name: "create",
-          label: "Creating Job Record",
+          label: "Submitting Job...",
           progress: 0,
           isActive: true,
           isIndeterminate: true,
         });
+
         const hash = await calculateFileHash(file);
         result = await startTranscriptionJob({
           blobUrl: blob.url,
           originalFileName: file.name,
-          fileSize: file.size,
           fileHash: hash,
           transcriptionMode: mode,
         });
       } else if (link) {
-        setStatusText("Creating your job...");
+        // For links, we go straight to the indeterminate state
+        setStatusText("Submitting your link...");
         setActiveStage({
           name: "create",
-          label: "Creating Job Record",
+          label: "Submitting Job...",
           progress: 0,
           isActive: true,
           isIndeterminate: true,
@@ -125,16 +123,15 @@ function NewTranscriptionContent() {
         throw new Error("No input selected");
       }
 
-      if (result.success && result.jobId) {
-        router.push(`/job/${result.jobId}`);
+      if (result.success && result.tempJobId) {
+        router.push(`/job/processing/${result.tempJobId}`);
       } else {
-        throw new Error(result.error || "Failed to create job");
+        throw new Error(result.error || "Failed to start job");
       }
     } catch (e: any) {
       setError(e.message);
       setView(ViewState.Error);
     }
-    setIsSubmitting(false);
   };
 
   if (error)

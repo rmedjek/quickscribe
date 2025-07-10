@@ -1,186 +1,107 @@
 // app/inngest/functions.ts
 import {inngest} from "./client";
-import prisma from "@/lib/prisma"; // CORRECT: Import the singleton
+import prisma from "@/lib/prisma";
 import {prepareAudioFromFileBlob} from "@/lib/file-processor";
 import {prepareAudioFromLink} from "@/lib/link-processor";
-import type {TranscriptionMode} from "@/components/ConfirmationView";
 import {transcribeAudioAction} from "@/actions/transcribeAudioAction";
 import {del} from "@vercel/blob";
 import * as fs from "node:fs/promises";
 import {revalidatePath} from "next/cache";
 
-// REMOVED: const prisma = new PrismaClient();
-
-// ... rest of the file remains the same
-export const processTranscription = inngest.createFunction(
-  {
-    id: "process-transcription-job",
-    concurrency: {limit: 5},
-  },
-  {event: "transcription.requested"},
+const mainWorker = inngest.createFunction(
+  {id: "process-submitted-media", concurrency: {limit: 10}},
+  {event: "media.submitted"},
   async ({event, step}) => {
-    const {jobId, isLinkJob} = event.data;
-    console.log(`[Inngest] Received job ${jobId}. Is link job: ${isLinkJob}`);
-
-    const job = await step.run("fetch-job-details", async () => {
-      return await prisma.transcriptionJob.findUnique({where: {id: jobId}});
-    });
-
-    if (!job) {
-      throw new Error(`Job with ID ${jobId} not found.`);
-    }
-
+    const {data} = event;
     let tempAudioPath: string | null = null;
 
     try {
-      await step.run("update-status-to-processing", async () =>
-        prisma.transcriptionJob.update({
-          where: {id: jobId},
-          data: {
-            status: "PROCESSING",
-            startedAt: new Date(),
-            processingSubStage: "PREPARING_AUDIO",
-          },
-        })
-      );
-
-      // --- STEP 1: Prepare Audio, returning the file path ---
-      const preparationResult = await step.run("prepare-audio", async () => {
-        return isLinkJob
-          ? await prepareAudioFromLink(job.fileUrl)
-          : await prepareAudioFromFileBlob(job.fileUrl, job.sourceFileName);
+      const prepResult = await step.run("1-prepare-audio", async () => {
+        return data.isLinkJob
+          ? await prepareAudioFromLink(data.linkUrl!)
+          : await prepareAudioFromFileBlob(
+              data.blobUrl!,
+              data.originalFileName!
+            );
       });
 
-      if (!preparationResult.success) {
-        throw new Error(preparationResult.error);
-      }
+      if (!prepResult.success) throw new Error(prepResult.error);
+      tempAudioPath = prepResult.tempAudioPath;
 
-      tempAudioPath = preparationResult.tempAudioPath;
-
-      if (
-        isLinkJob &&
-        "displayTitle" in preparationResult &&
-        preparationResult.displayTitle
-      ) {
-        await step.run("update-job-title", async () =>
-          prisma.transcriptionJob.update({
-            where: {id: jobId},
-            data: {
-              displayTitle: preparationResult.displayTitle as string,
-              sourceFileName: preparationResult.displayTitle as string,
-            },
-          })
-        );
-        await step.sendEvent("send-revalidation", {
-          name: "app/revalidate",
-          data: {path: "/"},
-        });
-      }
-
-      await step.run("update-substage-to-transcribing", async () => {
-        return prisma.transcriptionJob.update({
-          where: {id: jobId},
-          data: {processingSubStage: "TRANSCRIBING"},
-        });
-      });
-
-      // --- STEP 2: Transcribe Audio using the file path ---
       const transcriptionResult = await step.run(
-        "transcribe-audio",
+        "2-transcribe-audio",
         async () => {
-          const audioBuffer = await fs.readFile(
-            preparationResult.tempAudioPath
-          );
+          const audioBuffer = await fs.readFile(prepResult.tempAudioPath);
           const formData = new FormData();
           formData.append(
             "audioBlob",
             new Blob([audioBuffer], {type: "audio/opus"}),
-            preparationResult.audioFileName
+            prepResult.audioFileName
           );
-          return await transcribeAudioAction(
-            formData,
-            job.engineUsed as TranscriptionMode
-          );
+          return await transcribeAudioAction(formData, data.transcriptionMode);
         }
       );
 
-      if (transcriptionResult.success && transcriptionResult.data) {
-        const transcriptionData = transcriptionResult.data;
-        await step.run("update-job-as-completed", async () => {
-          return prisma.transcriptionJob.update({
-            where: {id: jobId},
-            data: {
-              status: "COMPLETED",
-              completedAt: new Date(),
-              transcriptText: transcriptionData.text,
-              transcriptSrt: transcriptionData.srtContent,
-              transcriptVtt: transcriptionData.vttContent,
-              duration: transcriptionData.duration,
-              language: transcriptionData.language,
-              processingSubStage: "COMPLETED",
-            },
-          });
-        });
-      } else {
+      if (!transcriptionResult.success || !transcriptionResult.data) {
         throw new Error(
-          transcriptionResult.error ||
-            "Transcription was successful but returned no data."
+          transcriptionResult.error || "Transcription returned no data."
         );
       }
-    } catch (error: any) {
-      await step.run("update-job-as-failed", async () => {
-        return prisma.transcriptionJob.update({
-          where: {id: jobId},
+
+      // Final step: Commit the successful job to the database
+      const newJob = await step.run("3-commit-job-to-db", async () => {
+        return prisma.transcriptionJob.create({
           data: {
-            status: "FAILED",
+            userId: data.userId,
+            status: "COMPLETED",
+            fileUrl: data.isLinkJob ? data.linkUrl! : data.blobUrl!,
+            sourceFileName:
+              data.originalFileName || (prepResult as any).displayTitle,
+            displayTitle:
+              (prepResult as any).displayTitle || data.originalFileName,
+            sourceFileHash: data.fileHash,
+            sourceFileSize: 0,
+            engineUsed: data.transcriptionMode,
+            transcriptText: transcriptionResult.data!.text,
+            transcriptSrt: transcriptionResult.data!.srtContent,
+            transcriptVtt: transcriptionResult.data!.vttContent,
+            duration: transcriptionResult.data!.duration,
+            language: transcriptionResult.data!.language,
+            startedAt: new Date(),
             completedAt: new Date(),
-            errorMessage: error.message || "An unknown error occurred.",
+            processingSubStage: "COMPLETED",
           },
         });
       });
+
+      // Revalidate the sidebar now that the COMPLETED job exists
+      revalidatePath("/");
+
+      // This is a placeholder for a real-time update system
+      console.log(
+        `[Inngest] Job complete. Final DB ID: ${newJob.id}. Client can now be redirected.`
+      );
+
+      return {success: true, newJobId: newJob.id};
+    } catch (error: any) {
+      console.error(
+        `[Inngest] Job for tempId ${data.tempJobId} failed:`,
+        error.message
+      );
       throw error;
     } finally {
-      // --- FINAL BLOCK: Cleanup using the stored file path ---
-      // 1. Clean up local temporary audio file
       if (tempAudioPath) {
-        await step.run("cleanup-temp-audio", async () => {
-          console.log(
-            `[Inngest] Cleaning up temporary audio file: ${tempAudioPath}`
-          );
-          await fs
-            .unlink(tempAudioPath as string)
-            .catch((err) =>
-              console.warn(
-                `[Cleanup] Could not delete temp audio file: ${err.message}`
-              )
-            );
-        });
+        await fs
+          .unlink(tempAudioPath)
+          .catch((e) => console.error("Temp audio cleanup failed", e));
       }
-
-      // 2. Delete the source blob from Vercel storage if it was a file upload
-      if (!isLinkJob && job.fileUrl) {
-        await step.run("delete-source-blob", async () => {
-          console.log(`[Inngest] Deleting source blob: ${job.fileUrl}`);
-          try {
-            await del(job.fileUrl);
-          } catch (delError: any) {
-            console.error(
-              `[Inngest] Failed to delete blob ${job.fileUrl}. Error: ${delError.message}`
-            );
-          }
-        });
+      if (!data.isLinkJob && data.blobUrl) {
+        await del(data.blobUrl).catch((e) =>
+          console.error("Source blob deletion failed", e)
+        );
       }
     }
-
-    return {success: true, message: `Job ${jobId} completed successfully.`};
   }
 );
 
-export const revalidatePathFunction = inngest.createFunction(
-  {id: "revalidate-path-on-demand"},
-  {event: "app/revalidate"}, // This will now be correctly typed
-  async ({event}) => {
-    revalidatePath(event.data.path);
-    return {revalidated: true, path: event.data.path};
-  }
-);
+export const functions = [mainWorker];

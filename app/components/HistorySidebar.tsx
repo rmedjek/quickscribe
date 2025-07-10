@@ -16,25 +16,22 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import {deleteJobAction, renameJobAction} from "@/actions/jobActions";
-import Modal from "./Modal";
-import StyledButton from "./StyledButton";
 import SidebarToggleIcon from "./icons/SidebarToggleIcon";
 import QuickScribeStaticLogo from "./icons/QuickScribeStaticLogo";
 import SearchModal from "./SearchModal";
-import {usePage} from "../contexts/PageContext";
+import RenameModal from "./modals/RenameModal";
+import DeleteConfirmationModal from "./modals/DeleteConfirmationModal";
 
 export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [jobToEdit, setJobToEdit] = useState<TranscriptionJob | null>(null);
-  const [newTitle, setNewTitle] = useState("");
   const pathname = usePathname();
   const menuRef = useRef<HTMLDivElement>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [jobToDelete, setJobToDelete] = useState<TranscriptionJob | null>(null);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-  const {triggerRefetch} = usePage();
   const pathSegments = pathname.split("/");
   const router = useRouter();
   const activeJobId =
@@ -52,24 +49,19 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [menuRef]);
 
-  const handleRename = async () => {
-    if (!jobToEdit || !newTitle.trim()) return;
-    const result = await renameJobAction(jobToEdit.id, newTitle.trim());
-    if (result.success) {
-      if (jobToEdit.id === activeJobId) {
-        triggerRefetch();
-      }
+  const handleRename = async (newTitle: string) => {
+    if (!jobToEdit) return;
+    const result = await renameJobAction(jobToEdit.id, newTitle);
+    if (result.success && jobToEdit.id === activeJobId) {
+      router.refresh();
     }
     setIsRenameModalOpen(false);
-    setJobToEdit(null);
   };
 
   const handleDeleteConfirm = async () => {
     if (!jobToDelete) return;
     await deleteJobAction(jobToDelete.id);
     setIsDeleteModalOpen(false);
-    setJobToDelete(null);
-    router.refresh();
   };
 
   return (
@@ -199,7 +191,6 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
                       <button
                         onClick={() => {
                           setJobToEdit(job);
-                          setNewTitle(job.displayTitle || "");
                           setIsRenameModalOpen(true);
                           setOpenMenuId(null);
                         }}
@@ -228,69 +219,20 @@ export default function HistorySidebar({jobs}: {jobs: TranscriptionJob[]}) {
         </div>
       </div>
 
-      <Modal
+      <RenameModal
         isOpen={isRenameModalOpen}
         onClose={() => setIsRenameModalOpen(false)}
-        title=""
-      >
-        <div className="space-y-4 p-4">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-            Rename Transcription
-          </h2>
-          <input
-            type="text"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            className="w-full px-3 py-2 bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg text-base focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && newTitle.trim()) {
-                handleRename();
-              }
-            }}
-          />
-          <div className="flex justify-end gap-3 pt-2">
-            <StyledButton
-              variant="secondary"
-              onClick={() => setIsRenameModalOpen(false)}
-            >
-              Cancel
-            </StyledButton>
-            <StyledButton onClick={handleRename} disabled={!newTitle.trim()}>
-              Save
-            </StyledButton>
-          </div>
-        </div>
-      </Modal>
-      <Modal
+        initialTitle={
+          jobToEdit?.displayTitle || jobToEdit?.sourceFileName || ""
+        }
+        onRename={handleRename}
+      />
+
+      <DeleteConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        size="sm" // Use a smaller modal width
-        position="center" // Ensure it's centered
-      >
-        <div className="p-6 text-left">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-            Delete Transcription?
-          </h2>
-          <div className="mt-2 mb-6">
-            <p className="text-sm text-[var(--text-primary)]">
-              Are you sure you want to delete this transcription? This action
-              cannot be undone.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row-reverse">
-            <StyledButton variant="danger" onClick={handleDeleteConfirm}>
-              Delete
-            </StyledButton>
-            <StyledButton
-              variant="secondary"
-              onClick={() => setIsDeleteModalOpen(false)}
-            >
-              Cancel
-            </StyledButton>
-          </div>
-        </div>
-      </Modal>
+        onConfirm={handleDeleteConfirm}
+      />
       <SearchModal
         isOpen={isSearchModalOpen}
         onClose={() => setIsSearchModalOpen(false)}

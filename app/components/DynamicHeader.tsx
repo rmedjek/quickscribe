@@ -4,27 +4,20 @@
 import {usePage} from "@/app/contexts/PageContext";
 import UserNav from "./UserNav";
 import {useState, useRef, useEffect} from "react";
-import {useRouter} from "next/navigation";
 import {ChevronDown, Edit, Trash2} from "lucide-react";
 import clsx from "clsx";
-import Modal from "./Modal";
-import StyledButton from "./StyledButton";
 import {deleteJobAction, renameJobAction} from "@/actions/jobActions";
+import {useRouter} from "next/navigation";
+import RenameModal from "./modals/RenameModal";
+import DeleteConfirmationModal from "./modals/DeleteConfirmationModal";
 
 export default function DynamicHeader() {
-  const {title, jobId, triggerRefetch} = usePage();
+  const {title, jobId, setPageTitle} = usePage();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  // State for modals
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState(title);
   const router = useRouter();
-
-  useEffect(() => {
-    setNewTitle(title);
-  }, [title]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -36,11 +29,12 @@ export default function DynamicHeader() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [menuRef]);
 
-  const handleRename = async () => {
-    if (!jobId || !newTitle.trim()) return;
-    const result = await renameJobAction(jobId, newTitle.trim());
+  const handleRename = async (title: string) => {
+    if (!jobId) return;
+    setPageTitle(title, jobId);
+    const result = await renameJobAction(jobId, title);
     if (result.success) {
-      triggerRefetch();
+      router.refresh();
     }
     setIsRenameModalOpen(false);
   };
@@ -49,19 +43,8 @@ export default function DynamicHeader() {
     if (!jobId) return;
     await deleteJobAction(jobId);
     setIsDeleteModalOpen(false);
-    router.refresh();
+    router.push("/");
   };
-
-  if (!title) {
-    return (
-      <header
-        id="page-header"
-        className="sticky top-0 z-10 flex h-16 shrink-0 items-center justify-end bg-[var(--header-bg)] px-6"
-      >
-        <UserNav />
-      </header>
-    );
-  }
 
   return (
     <>
@@ -70,12 +53,12 @@ export default function DynamicHeader() {
         className="sticky top-0 z-10 flex h-16 shrink-0 items-center justify-between bg-[var(--header-bg)] px-6"
       >
         <div className="relative" ref={menuRef}>
+          {/* The button is only enabled and shows the dropdown icon if there is a job ID */}
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="flex items-center gap-1.5 rounded-lg p-2 font-semibold text-[var(--text-primary)] transition-colors hover:bg-slate-200/60 dark:hover:bg-slate-700"
+            className="flex items-center gap-1.5 rounded-lg p-2 font-semibold text-[var(--text-primary)] transition-colors hover:bg-slate-200/60 disabled:pointer-events-none dark:hover:bg-slate-700"
             disabled={!jobId}
           >
-            {/* The font size is now smaller and the max-width is larger */}
             <span className="truncate max-w-md text-base">{title}</span>
             {jobId && (
               <ChevronDown
@@ -118,70 +101,18 @@ export default function DynamicHeader() {
       </header>
 
       {/* Modals for Rename and Delete */}
-      <Modal
+      <RenameModal
         isOpen={isRenameModalOpen}
         onClose={() => setIsRenameModalOpen(false)}
-        title=""
-      >
-        <div className="space-y-4 p-4">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-            Rename Transcription
-          </h2>
-          <input
-            type="text"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            className="w-full px-3 py-2 bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg text-base focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && newTitle.trim()) {
-                handleRename();
-              }
-            }}
-          />
-          <div className="flex justify-end gap-3 pt-2">
-            <StyledButton
-              variant="secondary"
-              onClick={() => setIsRenameModalOpen(false)}
-            >
-              Cancel
-            </StyledButton>
-            <StyledButton onClick={handleRename} disabled={!newTitle.trim()}>
-              Save
-            </StyledButton>
-          </div>
-        </div>
-      </Modal>
+        initialTitle={title}
+        onRename={(newTitle) => handleRename(newTitle)}
+      />
 
-      <Modal
+      <DeleteConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        size="sm" // Use a smaller modal width
-        position="center" // Ensure it's centered
-      >
-        <div className="p-6 text-left">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-            Delete Transcription?
-          </h2>
-          <div className="mt-2 mb-6">
-            <p className="text-sm text-[var(--text-primary)]">
-              Are you sure you want to delete this transcription? This action
-              cannot be undone.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row-reverse">
-            <StyledButton variant="danger" onClick={handleDelete}>
-              Delete
-            </StyledButton>
-            <StyledButton
-              variant="secondary"
-              onClick={() => setIsDeleteModalOpen(false)}
-            >
-              Cancel
-            </StyledButton>
-          </div>
-        </div>
-      </Modal>
+        onConfirm={handleDelete}
+      />
     </>
   );
 }
