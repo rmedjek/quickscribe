@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import StyledButton from "./StyledButton";
 import DownloadButton from "./DownloadButton";
-import JSZip from "jszip";
 import Modal from "./Modal";
 import {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
 import {TranscriptionMode} from "./ConfirmationView";
@@ -133,15 +132,23 @@ export default function ResultsView({
       aiQuickTools.find((t) => t.taskType === taskType)?.name || "AI Result"
     );
   };
+  // Inside ResultsView.tsx
+
   const zipAll = async () => {
     setZipping(true);
     try {
+      // Dynamically import JSZip only when needed ---
+      const JSZip = (await import("jszip")).default;
       const zip = new JSZip();
+
       zip.file("transcript.txt", transcriptionData.text);
-      if (transcriptionData.srtContent)
+      if (transcriptionData.srtContent) {
         zip.file("transcript.srt", transcriptionData.srtContent);
-      if (transcriptionData.vttContent)
+      }
+      if (transcriptionData.vttContent) {
         zip.file("transcript.vtt", transcriptionData.vttContent);
+      }
+
       if (aiResults.length > 0) {
         const aiFolder = zip.folder("ai-insights");
         if (aiFolder) {
@@ -158,6 +165,7 @@ export default function ResultsView({
           });
         }
       }
+
       const blob = await zip.generateAsync({type: "blob"});
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -211,11 +219,8 @@ export default function ResultsView({
   ) => {
     if (!transcriptionData.text || (isStreamingAi && activeAiTask === taskType))
       return;
-    if (
-      taskType !== "custom_question" &&
-      taskType !== "draft_email" &&
-      !forceRegenerate
-    ) {
+
+    if (taskType !== "custom_question" && !forceRegenerate) {
       const existingResult = aiResults.find(
         (r) => r.taskType === taskType && !r.error
       );
@@ -225,9 +230,7 @@ export default function ResultsView({
         return;
       }
     }
-    if (forceRegenerate) {
-      setAiResults((prev) => prev.filter((r) => r.taskType !== taskType));
-    }
+
     if (
       taskType === "custom_question" &&
       (!questionForTask || questionForTask.trim() === "")
@@ -236,15 +239,14 @@ export default function ResultsView({
       return;
     }
 
-    if (isStreamingAi) {
-      abortControllerRef.current?.abort();
-    }
+    if (isStreamingAi) abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
 
     setIsStreamingAi(true);
     setActiveAiTask(taskType);
     setGlobalAiError(null);
     const newResultId = `${taskType}-${Date.now()}`;
+
     if (taskType !== "draft_email") {
       const placeholder: AiResultItem = {
         id: newResultId,
@@ -263,6 +265,7 @@ export default function ResultsView({
     } else {
       setDraftedEmail(null);
     }
+
     if (taskType === "custom_question") setCustomQuestion("");
 
     const body: AIInteractionParams = {
@@ -271,8 +274,10 @@ export default function ResultsView({
       customPrompt: questionForTask,
       outputLanguage: aiOutputLanguage,
     };
-    let taskWasTruncated = false;
+
+    let wasTruncated = false;
     let accumulatedText = "";
+
     try {
       const response = await fetch(AI_INTERACTION_API_ENDPOINT, {
         method: "POST",
@@ -280,47 +285,50 @@ export default function ResultsView({
         body: JSON.stringify(body),
         signal: abortControllerRef.current.signal,
       });
+
       if (response.headers.get("X-Content-Truncated") === "true") {
-        taskWasTruncated = true;
+        wasTruncated = true;
       }
+
       if (!response.ok) {
-        let e;
-        try {
-          e = await response.json();
-        } catch {
-          throw new Error(`API Error: ${response.status}`);
-        }
-        throw new Error(e.error || `API Error: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API Error: ${response.status}`);
       }
+
       if (!response.body) throw new Error("Response body is null.");
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       while (true) {
         const {done, value} = await reader.read();
         if (done) break;
         accumulatedText += decoder.decode(value, {stream: true});
+
         if (taskType !== "draft_email") {
           setAiResults((curr) =>
             curr.map((r) =>
-              r.id === newResultId ? {...r, text: accumulatedText} : r
+              r.id === newResultId
+                ? {...r, text: accumulatedText, wasTruncated}
+                : r
             )
           );
         }
       }
+
       if (!abortControllerRef.current?.signal.aborted) {
         if (taskType === "draft_email") {
           const subjectMatch = accumulatedText.match(/Subject: (.*)/);
           const bodyMatch = accumulatedText.match(/Body: ([\s\S]*)/);
           setDraftedEmail({
-            subject: subjectMatch ? subjectMatch[1].trim() : "Summary",
-            body: bodyMatch ? bodyMatch[1].trim() : accumulatedText,
+            subject: subjectMatch?.[1].trim() || "Summary",
+            body: bodyMatch?.[1].trim() || accumulatedText,
           });
           setIsEmailModalOpen(true);
         } else {
           setAiResults((curr) =>
             curr.map((r) =>
               r.id === newResultId
-                ? {...r, isStreaming: false, wasTruncated: taskWasTruncated}
+                ? {...r, isStreaming: false, wasTruncated}
                 : r
             )
           );
@@ -329,9 +337,7 @@ export default function ResultsView({
       }
     } catch (error: any) {
       if (error.name !== "AbortError") {
-        if (taskType === "draft_email") {
-          setGlobalAiError(error.message);
-        } else {
+        if (taskType !== "draft_email") {
           setAiResults((curr) =>
             curr.map((r) =>
               r.id === newResultId
@@ -339,11 +345,12 @@ export default function ResultsView({
                 : r
             )
           );
+        } else {
+          setGlobalAiError(error.message);
         }
       } else {
-        if (taskType !== "draft_email") {
+        if (taskType !== "draft_email")
           setAiResults((curr) => curr.filter((r) => r.id !== newResultId));
-        }
       }
     } finally {
       setIsStreamingAi(false);
