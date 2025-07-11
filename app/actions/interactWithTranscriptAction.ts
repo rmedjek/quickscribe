@@ -4,6 +4,7 @@
 import Groq from "groq-sdk";
 import {get_encoding, Tiktoken} from "tiktoken";
 import {retryWithBackoff} from "@/lib/api-utils";
+import {env} from "@/lib/env.mjs";
 
 // Ensure GROQ_API_KEY is available
 if (!process.env.GROQ_API_KEY) {
@@ -13,23 +14,11 @@ if (!process.env.GROQ_API_KEY) {
 }
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-  maxRetries: 0, // Let our custom retryWithBackoff handle retries
+  apiKey: env.GROQ_API_KEY, // <-- Use env
+  maxRetries: 0,
 });
 
-const DEFAULT_LLM_MODEL =
-  process.env.GROQ_DEFAULT_LLM_MODEL || "llama3-8b-8192";
-
-// Parse reservation percent, with a fallback and validation
-const reservationPercent = parseFloat(
-  process.env.AI_RESPONSE_TOKEN_RESERVATION_PERCENT || "0.40"
-);
-const AI_RESPONSE_RESERVATION_PERCENT =
-  isNaN(reservationPercent) ||
-  reservationPercent < 0.1 ||
-  reservationPercent > 0.8
-    ? 0.4 // Fallback to 40% if value is invalid
-    : reservationPercent;
+const DEFAULT_LLM_MODEL = env.GROQ_DEFAULT_LLM_MODEL;
 
 export type AIInteractionTaskType =
   | "summarize"
@@ -48,7 +37,8 @@ export interface AIInteractionParams {
 type GroqMessage = Groq.Chat.Completions.ChatCompletionMessageParam;
 
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  [process.env.GROQ_DEFAULT_LLM_MODEL || "llama3-8b-8192"]: 7800, // You can make this map more dynamic if you support more models via env
+  // Use the env var directly here for consistency
+  [env.GROQ_DEFAULT_LLM_MODEL]: 7800,
   "llama3-8b-8192": 7800,
   "llama3-70b-8192": 7800,
   "gemma-7b-it": 7800,
@@ -175,7 +165,7 @@ export async function interactWithTranscriptAction(
 
   const TOKENS_RESERVED_FOR_OUTPUT_AND_TPM_BUFFER = Math.max(
     500, // minimum reservation
-    Math.floor(modelContextLimit * AI_RESPONSE_RESERVATION_PERCENT)
+    Math.floor(modelContextLimit * env.AI_RESPONSE_TOKEN_RESERVATION_PERCENT) // <-- Use env
   );
   const availableTokensForUserPayload =
     modelContextLimit -

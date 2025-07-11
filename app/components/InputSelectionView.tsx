@@ -4,6 +4,11 @@
 import React, {useRef, useState} from "react";
 import {UploadCloud} from "lucide-react"; // Removed LinkIcon as it's not used here
 import StyledButton from "./StyledButton";
+import {
+  ACCEPTED_AUDIO_TYPES,
+  ACCEPTED_VIDEO_TYPES,
+  ALL_ACCEPTED_MIME_TYPES_STRING,
+} from "@/types/app";
 
 interface InputSelectionViewProps {
   onFileSelected: (file: File) => void;
@@ -12,36 +17,6 @@ interface InputSelectionViewProps {
 
 const YOUTUBE_URL_REGEX =
   /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
-
-// Define accepted MIME types
-const ACCEPTED_VIDEO_TYPES = [
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "video/x-matroska",
-  "video/x-msvideo",
-  "video/x-flv",
-];
-// Broader audio types, including common ones and those Groq explicitly supports
-const ACCEPTED_AUDIO_TYPES = [
-  "audio/mpeg", // .mp3
-  "audio/mp4", // .m4a (often audio/mp4)
-  "audio/aac", // .aac
-  "audio/wav",
-  "audio/wave",
-  "audio/x-wav", // .wav
-  "audio/ogg", // .ogg (can be Vorbis or Opus)
-  "audio/opus", // .opus
-  "audio/flac", // .flac
-  "audio/webm", // .webm (often Opus or Vorbis in WebM audio)
-  // Add any other specific audio types you want to support
-];
-const ALL_ACCEPTED_TYPES_STRING = [
-  ...ACCEPTED_VIDEO_TYPES,
-  ...ACCEPTED_AUDIO_TYPES,
-  "video/*",
-  "audio/*",
-].join(",");
 
 const InputSelectionView: React.FC<InputSelectionViewProps> = ({
   onFileSelected,
@@ -214,7 +189,7 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
             ref={fileInputRef}
             onChange={handleFileChange}
             className="hidden"
-            accept={ALL_ACCEPTED_TYPES_STRING} // Use the combined string
+            accept={ALL_ACCEPTED_MIME_TYPES_STRING} // Use the combined string
           />
           <StyledButton
             variant="primary"

@@ -28,6 +28,7 @@ import {
 import {APP_STEPS, TRANSCRIPTION_MODEL_DISPLAY_NAMES} from "@/types/app";
 import type {AppStep} from "@/types/app";
 import {AiResultCard, AiResultItem} from "./AiResultCard";
+import ProgressStepper from "./ProgressStepper";
 
 const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
 
@@ -363,8 +364,7 @@ export default function ResultsView({
     <div className="bg-[var(--card-bg)] text-[var(--text-primary)] border border-transparent dark:border-[var(--border-color)] p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-4xl mx-auto">
       {" "}
       <div className="text-center mb-6">
-        {/* The GrayProgressStepper is correctly placed here */}
-        <GrayProgressStepper steps={APP_STEPS} />
+        <ProgressStepper steps={APP_STEPS} variant="completed" />
         <div className="flex justify-center my-6">
           <CheckCircle2 size={64} className="text-green-500" />
         </div>

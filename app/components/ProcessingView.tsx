@@ -3,7 +3,7 @@
 
 import React from "react";
 import ProgressStepper from "./ProgressStepper";
-import {AppStep, StepId, type StageDisplayData} from "@/types/app";
+import {AppStep, StepId} from "@/types/app";
 import QuickScribeLogo from "./icons/QuickScribeLogo";
 
 interface Props {

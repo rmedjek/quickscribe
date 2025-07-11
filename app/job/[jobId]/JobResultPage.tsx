@@ -11,9 +11,7 @@ export default function JobResultPage({job}: {job: TranscriptionJob}) {
   const {setPageTitle} = usePage();
   const router = useRouter();
 
-  useEffect(() => {
-    router.refresh();
-  }, [router]);
+  // The router.refresh() useEffect has been removed.
 
   useEffect(() => {
     setPageTitle(job.displayTitle || job.sourceFileName, job.id);

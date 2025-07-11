@@ -7,54 +7,70 @@ import {revalidatePath} from "next/cache";
 import {TranscriptionMode} from "@/components/ConfirmationView";
 import {inngest} from "@/inngest/client";
 import {del} from "@vercel/blob";
+import {AppEvents} from "@/inngest/types";
 
-interface StartFileJobParams {
+// --- NEW DISCRIMINATED UNION TYPES ---
+interface FileJobParams {
+  type: "file";
   blobUrl: string;
   originalFileName: string;
   fileHash: string;
   transcriptionMode: TranscriptionMode;
 }
 
-export async function startTranscriptionJob(params: StartFileJobParams) {
-  const session = await auth();
-  if (!session?.user?.id) return {success: false, error: "Unauthorized"};
-
-  const {fileHash} = params;
-
-  // Use the file hash as a temporary, unique ID for this job submission
-  const tempJobId = fileHash;
-
-  await inngest.send({
-    name: "media.submitted",
-    data: {...params, userId: session.user.id, isLinkJob: false, tempJobId},
-  });
-
-  console.log(
-    `[JobAction] Sent "media.submitted" event for tempJobId: ${tempJobId}`
-  );
-  return {success: true, tempJobId: tempJobId};
-}
-
-interface StartLinkJobParams {
+interface LinkJobParams {
+  type: "link";
   linkUrl: string;
   transcriptionMode: TranscriptionMode;
 }
 
-interface StartLinkJobParams {
-  linkUrl: string;
-  transcriptionMode: TranscriptionMode;
-}
+type SubmitJobParams = FileJobParams | LinkJobParams;
 
-export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
+export async function submitMediaJob(params: SubmitJobParams) {
   const session = await auth();
-  if (!session?.user?.id) return {success: false, error: "Unauthorized"};
+  if (!session?.user?.id) {
+    return {success: false, error: "Unauthorized"};
+  }
 
-  // Create a temporary ID from a hash of the URL for link jobs
-  const tempJobId = Buffer.from(params.linkUrl).toString("base64");
+  let tempJobId: string;
+  let eventPayload: AppEvents["media.submitted"]["data"];
+
+  if (params.type === "file") {
+    tempJobId = params.fileHash;
+    eventPayload = {
+      userId: session.user.id,
+      transcriptionMode: params.transcriptionMode,
+      isLinkJob: false,
+      tempJobId,
+      blobUrl: params.blobUrl,
+      originalFileName: params.originalFileName,
+      fileHash: params.fileHash,
+    };
+  } else {
+    // params.type === 'link'
+    // --- THIS IS THE FIX ---
+    // 1. Encode the URL to Base64 as before.
+    const base64Id = Buffer.from(params.linkUrl).toString("base64");
+    // 2. Make it URL-safe by replacing problematic characters.
+    //    Replace '/' with '_', '+' with '-', and remove '=' padding.
+    tempJobId = base64Id
+      .replace(/\//g, "_")
+      .replace(/\+/g, "-")
+      .replace(/=/g, "");
+    // --- END FIX ---
+
+    eventPayload = {
+      userId: session.user.id,
+      transcriptionMode: params.transcriptionMode,
+      isLinkJob: true,
+      tempJobId,
+      linkUrl: params.linkUrl,
+    };
+  }
 
   await inngest.send({
     name: "media.submitted",
-    data: {...params, userId: session.user.id, isLinkJob: true, tempJobId},
+    data: eventPayload,
   });
 
   console.log(
@@ -66,6 +82,7 @@ export async function startLinkTranscriptionJob(params: StartLinkJobParams) {
 export async function getJobAction(jobId: string) {
   const session = await auth();
   const userId = session?.user?.id;
+
   if (!userId) return null;
   return await prisma.transcriptionJob.findFirst({
     where: {id: jobId, userId: userId},
@@ -79,7 +96,6 @@ export async function deleteJobAction(jobId: string) {
   if (!userId) {
     return {success: false, error: "Unauthorized"};
   }
-  if (!session?.user?.id) return {success: false, error: "Unauthorized"};
 
   try {
     const jobToDelete = await prisma.transcriptionJob.findUnique({
@@ -109,6 +125,7 @@ export async function deleteJobAction(jobId: string) {
       where: {id: jobId},
     });
 
+    revalidatePath("/");
     console.log(`[JobAction] Deleted job ${jobId} for user ${userId}`);
     return {success: true};
   } catch (error) {

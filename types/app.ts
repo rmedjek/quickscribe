@@ -3,6 +3,7 @@ import type {ElementType} from "react";
 import {Settings, Waves, FileText} from "lucide-react";
 import {TranscriptionMode} from "@/components/ConfirmationView";
 import {AIInteractionTaskType} from "@/actions/interactWithTranscriptAction";
+
 // ---------------------------------------------------------------------
 //  Common, shareable application‑level types.
 // ---------------------------------------------------------------------
@@ -44,11 +45,6 @@ export const TRANSCRIPTION_MODEL_DISPLAY_NAMES: Record<
   turbo: "Whisper Large v3 (Turbo)", // Or whatever you want the turbo display name to be
 };
 
-export const TRANSCRIPTION_MODELS: Record<TranscriptionMode, string> = {
-  core: process.env.GROQ_TRANSCRIPTION_MODEL_CORE || "whisper-large-v3",
-  turbo: process.env.GROQ_TRANSCRIPTION_MODEL_TURBO || "whisper-large-v3-turbo",
-};
-
 export const parseListItems = (text: string): string[] => {
   if (!text) return [];
   const potentialItems = text
@@ -75,3 +71,34 @@ export interface AiResultItem {
   error?: string;
   isStreaming?: boolean;
 }
+
+// Accepted MIME types for file uploads
+export const ACCEPTED_VIDEO_TYPES = [
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-matroska",
+  "video/x-msvideo",
+  "video/x-flv",
+];
+
+export const ACCEPTED_AUDIO_TYPES = [
+  "audio/mpeg", // .mp3
+  "audio/mp4", // .m4a
+  "audio/aac",
+  "audio/wav",
+  "audio/wave",
+  "audio/x-wav",
+  "audio/ogg",
+  "audio/opus",
+  "audio/flac",
+  "audio/webm",
+];
+
+// A combined string for use in the <input type="file" accept="..."> attribute
+export const ALL_ACCEPTED_MIME_TYPES_STRING = [
+  ...ACCEPTED_VIDEO_TYPES,
+  ...ACCEPTED_AUDIO_TYPES,
+  "video/*", // Generic fallbacks
+  "audio/*",
+].join(",");

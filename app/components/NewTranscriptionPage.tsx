@@ -1,13 +1,10 @@
 // app/components/NewTranscriptionPage.tsx
 "use client";
 
-import React, {useState, useCallback} from "react";
+import React, {useState, useCallback, useEffect} from "react";
 import {useRouter} from "next/navigation";
 import {upload} from "@vercel/blob/client";
-import {
-  startTranscriptionJob,
-  startLinkTranscriptionJob,
-} from "@/actions/jobActions";
+import {submitMediaJob} from "@/actions/jobActions";
 import {calculateFileHash} from "@/lib/hash-utils";
 import {
   type SelectedInputType,
@@ -20,6 +17,7 @@ import ConfirmationView, {
 } from "@/components/ConfirmationView";
 import ProcessingView from "@/components/ProcessingView";
 import {StepperProvider, useStepper} from "../contexts/StepperContext";
+import {usePage} from "../contexts/PageContext";
 
 enum ViewState {
   SelectingInput,
@@ -37,8 +35,13 @@ function NewTranscriptionContent() {
   const [inputType, setInputType] = useState<SelectedInputType | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeStage, setActiveStage] = useState<StageDisplayData | null>(null); // State for a single stage
+  const [activeStage, setActiveStage] = useState<StageDisplayData | null>(null);
   const [statusText, setStatusText] = useState("");
+  const {setPageTitle} = usePage();
+
+  useEffect(() => {
+    setPageTitle("New Transcription");
+  }, [setPageTitle]);
 
   const onFileSelected = (f: File) => {
     setFile(f);
@@ -70,7 +73,6 @@ function NewTranscriptionContent() {
     try {
       if (file) {
         setStatusText("Uploading your file...");
-        // --- THIS IS THE FIX: Set the initial stage for the progress bar ---
         setActiveStage({
           name: "upload",
           label: "Uploading File",
@@ -99,7 +101,8 @@ function NewTranscriptionContent() {
         });
 
         const hash = await calculateFileHash(file);
-        result = await startTranscriptionJob({
+        result = await submitMediaJob({
+          type: "file",
           blobUrl: blob.url,
           originalFileName: file.name,
           fileHash: hash,
@@ -115,7 +118,8 @@ function NewTranscriptionContent() {
           isActive: true,
           isIndeterminate: true,
         });
-        result = await startLinkTranscriptionJob({
+        result = await submitMediaJob({
+          type: "link",
           linkUrl: link,
           transcriptionMode: mode,
         });

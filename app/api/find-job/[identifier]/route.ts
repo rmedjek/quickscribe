@@ -14,14 +14,16 @@ export async function GET(
 
   const {identifier} = params;
 
-  // Try to find a completed job by either file hash or file URL (for links)
+  const rePadded = identifier + "=".repeat((4 - (identifier.length % 4)) % 4);
+  const originalBase64 = rePadded.replace(/_/g, "/").replace(/-/g, "+");
+  const linkUrl = Buffer.from(originalBase64, "base64").toString("ascii");
   const job = await prisma.transcriptionJob.findFirst({
     where: {
       userId: session.user.id,
       status: "COMPLETED",
       OR: [
         {sourceFileHash: identifier},
-        {fileUrl: Buffer.from(identifier, "base64").toString("ascii")},
+        {fileUrl: linkUrl}, // Use the decoded URL
       ],
     },
   });

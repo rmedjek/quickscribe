@@ -5,8 +5,13 @@ import {redirect} from "next/navigation";
 import PageLayout from "@/components/PageLayout";
 import JobResultPage from "./JobResultPage";
 
-export default async function JobPage({params}: {params: {jobId: string}}) {
-  const {jobId} = params;
+export default async function JobPage({
+  params,
+}: {
+  params: Promise<{jobId: string}>;
+}) {
+  // Await the params before destructuring
+  const {jobId} = await params;
   const session = await auth();
   if (!session?.user?.id) redirect("/signin");
 

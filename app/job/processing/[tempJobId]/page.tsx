@@ -27,7 +27,7 @@ export default function JobProcessingPage() {
   const params = useParams();
   const tempJobId = params.tempJobId as string;
 
-  const {setPageTitle} = usePage();
+  // const {setPageTitle} = usePage();
   const processingStage: StageDisplayData = {
     name: "processing",
     label: "Processing on server...",
@@ -36,10 +36,10 @@ export default function JobProcessingPage() {
     isIndeterminate: true,
   };
 
-  useEffect(() => {
-    setPageTitle("Processing Transcription");
-    return () => setPageTitle("");
-  }, [setPageTitle]);
+  // useEffect(() => {
+  //   setPageTitle("Processing Transcription");
+  //   return () => setPageTitle("");
+  // }, [setPageTitle]);
 
   useEffect(() => {
     if (!tempJobId) return;

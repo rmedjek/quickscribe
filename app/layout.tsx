@@ -33,7 +33,7 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className="h-full">
       <head>
-        <ThemeScript /> {/* <-- ADD THIS SCRIPT HERE */}
+        <ThemeScript />
       </head>
       <body
         className={`${inter.className} h-full bg-[var(--page-bg)] text-[var(--text-primary)]`}

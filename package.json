@@ -20,6 +20,7 @@
     "@ffmpeg/util": "^0.12.2",
     "@prisma/client": "^6.10.1",
     "@sentry/nextjs": "^9.30.0",
+    "@t3-oss/env-nextjs": "^0.13.8",
     "@vercel/blob": "^1.1.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -34,7 +35,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tiktoken": "^1.0.21",
-    "undici": "^7.9.0"
+    "undici": "^7.9.0",
+    "zod": "^4.0.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

@@ -1,4 +1,5 @@
 // app/lib/auth.ts
+import {env} from "@/lib/env.mjs";
 import {PrismaAdapter} from "@auth/prisma-adapter";
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
@@ -9,15 +10,16 @@ import type {Adapter} from "next-auth/adapters";
 const prisma = new PrismaClient();
 
 export const {handlers, auth, signIn, signOut} = NextAuth({
+  secret: env.AUTH_SECRET, // It's good practice to explicitly set the secret
   adapter: PrismaAdapter(prisma) as Adapter,
   providers: [
     Google({
-      clientId: process.env.AUTH_GOOGLE_ID,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET,
+      clientId: env.AUTH_GOOGLE_ID, // <-- Use env
+      clientSecret: env.AUTH_GOOGLE_SECRET, // <-- Use env
     }),
     GitHub({
-      clientId: process.env.AUTH_GITHUB_ID,
-      clientSecret: process.env.AUTH_GITHUB_SECRET,
+      clientId: env.AUTH_GITHUB_ID, // <-- Use env
+      clientSecret: env.AUTH_GITHUB_SECRET, // <-- Use env
     }),
   ],
   session: {
