@@ -30,7 +30,6 @@ export async function GET(
     // If not found by hash, try to decode as base64 URL
     if (!job) {
       try {
-        // Handle URL-safe base64 decoding
         const rePadded =
           identifier + "=".repeat((4 - (identifier.length % 4)) % 4);
         const originalBase64 = rePadded.replace(/_/g, "/").replace(/-/g, "+");
@@ -40,8 +39,8 @@ export async function GET(
         job = await prisma.transcriptionJob.findFirst({
           where: {
             userId: session.user.id,
-            status: "COMPLETED",
-            fileUrl: linkUrl,
+            status: {in: ["COMPLETED", "FAILED"]},
+            OR: [{sourceFileHash: identifier}, {fileUrl: linkUrl}],
           },
         });
       } catch (decodeError) {

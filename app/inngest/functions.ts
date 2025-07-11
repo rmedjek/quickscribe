@@ -14,6 +14,7 @@ const mainWorker = inngest.createFunction(
   async ({event, step}) => {
     const {data} = event;
     let tempAudioPath: string | null = null;
+    const {userId, tempJobId, isLinkJob} = data; // Destructure for use in catch
 
     try {
       const prepResult = await step.run("1-prepare-audio", async () => {
@@ -74,10 +75,8 @@ const mainWorker = inngest.createFunction(
         });
       });
 
-      // Revalidate the sidebar now that the COMPLETED job exists
       revalidatePath("/");
 
-      // This is a placeholder for a real-time update system
       console.log(
         `[Inngest] Job complete. Final DB ID: ${newJob.id}. Client can now be redirected.`
       );
@@ -85,9 +84,29 @@ const mainWorker = inngest.createFunction(
       return {success: true, newJobId: newJob.id};
     } catch (error: any) {
       console.error(
-        `[Inngest] Job for tempId ${data.tempJobId} failed:`,
+        `[Inngest] Job for tempId ${tempJobId} failed permanently:`,
         error.message
       );
+
+      await step.run("x-commit-failure-to-db", async () => {
+        return prisma.transcriptionJob.create({
+          data: {
+            userId: userId,
+            status: "FAILED",
+            errorMessage:
+              error.message || "An unknown processing error occurred.",
+            fileUrl: data.linkUrl || data.blobUrl || "N/A",
+            sourceFileHash: isLinkJob ? tempJobId : data.fileHash,
+            sourceFileName: data.originalFileName || data.linkUrl || "N/A",
+            displayTitle: data.originalFileName || data.linkUrl || "N/A",
+            engineUsed: data.transcriptionMode,
+            sourceFileSize: 0,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+      });
+
       throw error;
     } finally {
       if (tempAudioPath) {

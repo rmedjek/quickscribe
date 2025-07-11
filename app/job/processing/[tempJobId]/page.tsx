@@ -6,6 +6,12 @@ import {useRouter, useParams} from "next/navigation";
 import ProcessingView from "@/components/ProcessingView";
 import {APP_STEPS, StageDisplayData} from "@/types/app";
 import {StepperProvider} from "@/app/contexts/StepperContext";
+import StyledButton from "@/components/StyledButton";
+
+// Polling interval in milliseconds
+const POLLING_INTERVAL = 3000;
+// Timeout after 5 minutes (300,000 ms)
+const PROCESSING_TIMEOUT = 5 * 60 * 1000;
 
 // This is a simple client-side poller.
 async function checkJobCompletion(identifier: string) {
@@ -37,7 +43,7 @@ export default function JobProcessingPage() {
   const router = useRouter();
   const params = useParams();
   const tempJobId = params.tempJobId as string;
-  const [pollCount, setPollCount] = useState(0);
+  const [error, setError] = useState<string | null>(null); // <-- Add error state
 
   const processingStage: StageDisplayData = {
     name: "processing",
@@ -48,48 +54,70 @@ export default function JobProcessingPage() {
   };
 
   useEffect(() => {
-    if (!tempJobId) {
-      console.error("No tempJobId found in params");
-      return;
-    }
+    if (!tempJobId) return;
 
-    console.log(`Starting to poll for job with tempJobId: ${tempJobId}`);
-    console.log(`Decoded tempJobId might be: ${decodeURIComponent(tempJobId)}`);
-
-    const interval = setInterval(async () => {
-      setPollCount((prev) => {
-        const newCount = prev + 1;
-        console.log(`Poll attempt #${newCount}`);
-        return newCount;
-      });
-
-      const finalJob = await checkJobCompletion(tempJobId);
-      if (finalJob && finalJob.id) {
-        console.log("Job completed! Redirecting to:", `/job/${finalJob.id}`);
-        clearInterval(interval);
-        router.push(`/job/${finalJob.id}`);
-      } else if (pollCount >= 40) {
-        // Stop after 2 minutes (40 * 3 seconds)
-        console.log("Polling timeout reached - stopping");
-        clearInterval(interval);
-        // Optionally show error or redirect
-        alert(
-          "Job processing is taking longer than expected. Please check back later."
-        );
+    // --- POLLING LOGIC WITH TIMEOUT ---
+    const poll = setInterval(async () => {
+      try {
+        const finalJob = await checkJobCompletion(tempJobId);
+        if (finalJob) {
+          clearInterval(poll);
+          clearTimeout(timeout); // Clear the timeout if we get a result
+          if (finalJob.status === "COMPLETED") {
+            router.push(`/job/${finalJob.id}`);
+          } else {
+            // It must be FAILED
+            setError(
+              finalJob.errorMessage || "The job failed for an unknown reason."
+            );
+          }
+        }
+      } catch (e) {
+        // This catches network errors during polling
+        console.error("Polling check failed:", e);
       }
-    }, 3000);
+    }, POLLING_INTERVAL);
+
+    // Set a timeout to stop polling after a while
+    const timeout = setTimeout(() => {
+      clearInterval(poll);
+      setError(
+        "Processing is taking longer than expected. Please check your history later or try again."
+      );
+    }, PROCESSING_TIMEOUT);
+    // --- END POLLING LOGIC ---
 
     return () => {
-      console.log("Cleaning up polling interval");
-      clearInterval(interval);
+      clearInterval(poll);
+      clearTimeout(timeout);
     };
-  }, [tempJobId, router, pollCount]);
+  }, [tempJobId, router]);
+
+  // --- NEW ERROR UI ---
+  if (error) {
+    return (
+      <div className="bg-[var(--card-bg)] p-8 rounded-xl shadow-xl w-full max-w-xl mx-auto text-center">
+        <h2 className="text-xl font-bold text-red-500 mb-4">
+          Processing Failed
+        </h2>
+        <p className="my-4 text-[var(--text-primary)]">{error}</p>
+        <StyledButton
+          variant="primary"
+          onClick={() => router.push("/")}
+          className="mt-4"
+        >
+          Start New Transcription
+        </StyledButton>
+      </div>
+    );
+  }
+  // --- END ERROR UI ---
 
   return (
     <StepperProvider>
       <ProcessingView
         stage={processingStage}
-        currentOverallStatusMessage={`Your transcription is being processed... `}
+        currentOverallStatusMessage="Your transcription is being processed..."
         appSteps={APP_STEPS}
         currentAppStepId="process"
       />
