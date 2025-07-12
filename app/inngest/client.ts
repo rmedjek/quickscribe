@@ -9,3 +9,5 @@ export const inngest = new Inngest({
   id: "quickscribe",
   schemas,
 });
+
+export type {AppEvents};

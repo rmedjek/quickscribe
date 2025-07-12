@@ -27,7 +27,14 @@ export const env = createEnv({
       .transform(Number)
       .pipe(z.number().min(0.1).max(0.8))
       .default("0.4"),
-    BLOB_READ_WRITE_TOKEN: z.string().min(1),
+    //BLOB_READ_WRITE_TOKEN: z.string().min(1),
+    R2_BUCKET_NAME: z.string().min(1),
+    R2_ACCOUNT_ID: z.string().min(1),
+    R2_ACCESS_KEY_ID: z.string().min(1),
+    R2_SECRET_ACCESS_KEY: z.string().min(1),
+    FORCE_V1_PROCESSING: z.string().optional(),
+    R2_PUBLIC_HOSTNAME: z.string().min(1),
+
   },
 
   /**
@@ -58,7 +65,13 @@ export const env = createEnv({
     GROQ_TRANSCRIPTION_MODEL_TURBO: process.env.GROQ_TRANSCRIPTION_MODEL_TURBO,
     GROQ_DEFAULT_LLM_MODEL: process.env.GROQ_DEFAULT_LLM_MODEL,
     AI_RESPONSE_TOKEN_RESERVATION_PERCENT: process.env.AI_RESPONSE_TOKEN_RESERVATION_PERCENT,
-    BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+    //BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+    R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
+    R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
+    R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
+    FORCE_V1_PROCESSING: process.env.FORCE_V1_PROCESSING,
+    R2_PUBLIC_HOSTNAME: process.env.R2_PUBLIC_HOSTNAME,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

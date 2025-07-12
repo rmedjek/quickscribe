@@ -15,11 +15,10 @@ const TRANSCRIPTION_MODELS: Record<TranscriptionMode, string> = {
   core: env.GROQ_TRANSCRIPTION_MODEL_CORE,
   turbo: env.GROQ_TRANSCRIPTION_MODEL_TURBO,
 };
-
 const GROQ_REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes for each attempt
 
 const groq = new Groq({
-  apiKey: env.GROQ_API_KEY, // <-- Use env
+  apiKey: env.GROQ_API_KEY,
   timeout: GROQ_REQUEST_TIMEOUT_MS,
   maxRetries: 0,
 });
@@ -50,21 +49,25 @@ export async function transcribeAudioAction(
   if (!audioBlob) {
     return {success: false, error: "No audio file provided in form data."};
   }
-
   const audioBlobSizeMB = (audioBlob.size / (1024 * 1024)).toFixed(2);
   console.log(
-    `[Server Action] Received audio blob: ${audioBlob.name}, Size: ${audioBlobSizeMB} MB, Type: ${audioBlob.type}`
+    `[transcribeAudioAction] Attempting to transcribe blob. Name: "${audioBlob.name}", Size: ${audioBlobSizeMB} MB, Type: "${audioBlob.type}"`
   );
+
+  // A simple check for an obviously empty file, which could cause a 500 error.
+  if (audioBlob.size === 0) {
+    console.error(
+      "[transcribeAudioAction] Error: The provided audio blob is empty (0 bytes)."
+    );
+    return {success: false, error: "Provided audio file is empty."};
+  }
+
   console.log(
-    `[Server Action] Preparing to transcribe with actual model: "${modelToUse}"`
+    `[Server Action] Received audio blob: ${audioBlob.name}, Size: ${audioBlobSizeMB} MB, Type: ${audioBlob.type}`
   );
 
   try {
     const operation = async () => {
-      // This console log will now appear for each attempt within retryWithBackoff
-      console.log(
-        `[Server Action] Attempting Groq transcription. Size: ${audioBlobSizeMB} MB...`
-      );
       return await groq.audio.transcriptions.create({
         file: audioBlob,
         model: modelToUse,
@@ -81,11 +84,11 @@ export async function transcribeAudioAction(
       operationName: `GroqAudioTranscription-${audioBlob.name.substring(
         0,
         20
-      )}`, // Add some identifier
+      )}`,
       operation,
-      maxRetries: 2, // e.g., 2 retries (total 3 attempts)
-      initialBackoffMs: 2000, // Start with 2s backoff
-      maxBackoffMs: 45000, // Max 45s backoff
+      maxRetries: 2,
+      initialBackoffMs: 2000,
+      maxBackoffMs: 45000,
     });
 
     console.log(
@@ -149,7 +152,7 @@ export async function transcribeAudioAction(
     }
   } catch (error: unknown) {
     console.error(
-      `[Server Action] Error during Groq API call for transcription (file: ${audioBlob.name}, size: ${audioBlobSizeMB}MB) after all retries:`,
+      `[transcribeAudioAction] FAILED for blob: "${audioBlob.name}", Size: ${audioBlob.size}. Full Error:`,
       error
     );
 

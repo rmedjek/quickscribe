@@ -3,7 +3,6 @@
 
 import React, {useState, useCallback, useEffect} from "react";
 import {useRouter} from "next/navigation";
-import {upload} from "@vercel/blob/client";
 import {submitMediaJob} from "@/actions/jobActions";
 import {calculateFileHash} from "@/lib/hash-utils";
 import {
@@ -18,6 +17,8 @@ import ConfirmationView, {
 import ProcessingView from "@/components/ProcessingView";
 import {StepperProvider, useStepper} from "../contexts/StepperContext";
 import {usePage} from "../contexts/PageContext";
+
+const LARGE_FILE_THRESHOLD_BYTES = 20 * 1024 * 1024;
 
 enum ViewState {
   SelectingInput,
@@ -68,48 +69,72 @@ function NewTranscriptionContent() {
     setView(ViewState.Submitting);
     setStep("process");
     setError(null);
-    let result: {success: boolean; tempJobId?: string; error?: string};
 
     try {
+      let result: {success: boolean; tempJobId?: string; error?: string};
+
       if (file) {
-        setStatusText("Uploading your file...");
+        // --- R2 UPLOAD FLOW ---
+        setStatusText("Preparing secure upload...");
         setActiveStage({
           name: "upload",
-          label: "Uploading File",
+          label: "Preparing Upload...",
           progress: 0,
           isActive: true,
         });
 
-        const blob = await upload(file.name, file, {
-          access: "public",
-          handleUploadUrl: "/api/client-upload",
-          onUploadProgress: (p) => {
-            setActiveStage((prev) =>
-              prev ? {...prev, progress: p.percentage / 100} : null
-            );
-          },
+        // 1. Get the presigned URL from our new API endpoint
+        const presignedUrlResponse = await fetch("/api/presigned-url", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({filename: file.name, contentType: file.type}),
         });
+        if (!presignedUrlResponse.ok) {
+          const errorBody = await presignedUrlResponse.json();
+          throw new Error(`Could not prepare upload: ${errorBody.error}`);
+        }
+        const {url: presignedUrl, publicUrl} =
+          await presignedUrlResponse.json();
 
+        setStatusText("Uploading your file...");
+        setActiveStage((prev) => ({
+          ...prev!,
+          label: "Uploading File...",
+          progress: 0.1,
+        })); // Indicate progress
+
+        // 2. Upload the file directly to R2 using the presigned URL
+        // Note: For real progress, we'd use XMLHttpRequest, but fetch is simpler for now.
+        const uploadResponse = await fetch(presignedUrl, {
+          method: "PUT",
+          body: file,
+          headers: {"Content-Type": file.type},
+        });
+        if (!uploadResponse.ok) throw new Error("File upload failed.");
+
+        setActiveStage((prev) => ({
+          ...prev!,
+          label: "Upload Complete",
+          progress: 1,
+        }));
         setStatusText("Creating your job...");
-        // After upload, switch to an indeterminate state
-        setActiveStage({
-          name: "create",
-          label: "Submitting Job...",
-          progress: 0,
-          isActive: true,
-          isIndeterminate: true,
-        });
 
+        // 3. Submit the job to our backend with the public R2 URL
         const hash = await calculateFileHash(file);
+        const strategy =
+          file.size > LARGE_FILE_THRESHOLD_BYTES ? "CHUNKED" : "SINGLE";
+
         result = await submitMediaJob({
           type: "file",
-          blobUrl: blob.url,
+          blobUrl: publicUrl, // Use the final public R2 URL
           originalFileName: file.name,
           fileHash: hash,
+          fileSize: file.size,
+          processingStrategy: strategy,
           transcriptionMode: mode,
         });
       } else if (link) {
-        // For links, we go straight to the indeterminate state
+        // Link logic remains the same
         setStatusText("Submitting your link...");
         setActiveStage({
           name: "create",

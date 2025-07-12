@@ -75,3 +75,47 @@ export async function prepareAudioFromFileBlob(
     return {success: false, error: `Failed to process file: ${error.message}`};
   }
 }
+
+// --- NEW FUNCTION TO SPLIT AUDIO ---
+interface ChunkInfo {
+  index: number;
+  fileName: string;
+  filePath: string;
+  startTime: number;
+  endTime: number;
+}
+
+export async function splitAudio(
+  sourcePath: string,
+  jobId: string,
+  segmentDuration = 600 // 10 minutes
+): Promise<
+  {success: true; chunks: ChunkInfo[]} | {success: false; error: string}
+> {
+  const outputDir = path.join("/tmp", `chunks_${jobId}`);
+  try {
+    await fs.mkdir(outputDir, {recursive: true});
+
+    // Use ffmpeg to split the audio into segments
+    const outputPattern = path.join(outputDir, `chunk_%03d.opus`);
+    const ffmpegCommand = `ffmpeg -i "${sourcePath}" -f segment -segment_time ${segmentDuration} -c:a libopus -b:a 64k -vn "${outputPattern}"`;
+
+    await execAsync(ffmpegCommand);
+
+    const files = await fs.readdir(outputDir);
+    const chunks: ChunkInfo[] = files
+      .filter((file) => file.endsWith(".opus"))
+      .map((fileName, index) => ({
+        index,
+        fileName,
+        filePath: path.join(outputDir, fileName),
+        startTime: index * segmentDuration,
+        endTime: (index + 1) * segmentDuration,
+      }));
+
+    return {success: true, chunks};
+  } catch (error: any) {
+    console.error("Failed to split audio:", error);
+    return {success: false, error: `FFmpeg split failed: ${error.message}`};
+  }
+}

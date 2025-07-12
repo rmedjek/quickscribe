@@ -46,6 +46,12 @@ model TranscriptionJob {
   // New field for full-text search (index removed) ---
   transcript_tsvector Unsupported("tsvector")?
 
+  // --- V2 CHUNKING FIELDS (NEW) ---
+  processing_strategy String? @default("SINGLE")
+  chunks_total        Int?
+  chunks_completed    Int?    @default(0)
+  // --- END V2 FIELDS ---
+
   // Metadata
   engineUsed   String  @default("groq")
   language     String?
@@ -62,8 +68,28 @@ model TranscriptionJob {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String
 
+  // --- V2 RELATION (NEW) ---
+  chunks JobChunk[]
+
   @@index([userId])
   @@map("transcription_jobs")
+}
+
+// --- NEW MODEL FOR JOB CHUNKS ---
+model JobChunk {
+  id    String           @id @default(cuid())
+  job   TranscriptionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId String
+
+  chunk_index Int
+  start_time  Float
+  end_time    Float
+  blob_url    String  @db.Text
+  transcript  String? @db.Text
+  status      String  @default("PENDING")
+
+  @@index([jobId])
+  @@map("job_chunks")
 }
 
 // --- Enums ---
@@ -75,6 +101,9 @@ enum Role {
 enum JobStatus {
   PENDING
   PROCESSING
+  CHUNKING
+  PROCESSING_CHUNKS
+  ASSEMBLING
   COMPLETED
   FAILED
   CANCELLED

@@ -8,31 +8,28 @@ import {APP_STEPS, StageDisplayData} from "@/types/app";
 import {StepperProvider} from "@/app/contexts/StepperContext";
 import StyledButton from "@/components/StyledButton";
 
-// Polling interval in milliseconds
 const POLLING_INTERVAL = 3000;
-// Timeout after 5 minutes (300,000 ms)
-const PROCESSING_TIMEOUT = 5 * 60 * 1000;
+const PROCESSING_TIMEOUT = 15 * 60 * 1000; // Increased to 15 mins for large files
+
+// We'll define a type for the polling response for clarity
+interface JobStatusResponse {
+  id: string;
+  status: string;
+  errorMessage?: string | null;
+  chunks_total?: number | null;
+  chunks_completed?: number | null;
+}
 
 // This is a simple client-side poller.
-async function checkJobCompletion(identifier: string) {
+async function checkJobCompletion(
+  identifier: string
+): Promise<JobStatusResponse | null> {
   try {
-    console.log(`Polling for job with identifier: ${identifier}`);
     const res = await fetch(`/api/find-job/${identifier}`);
-
     if (res.ok) {
-      const job = await res.json();
-      console.log("Job found:", job);
-      return job;
-    } else if (res.status === 404) {
-      console.log("Job not found yet (404), continuing to poll...");
-      return null;
-    } else if (res.status === 401) {
-      console.error("Unauthorized - session may have expired");
-      return null;
-    } else {
-      console.error("Unexpected response status:", res.status);
-      return null;
+      return await res.json();
     }
+    return null;
   } catch (error) {
     console.error("Polling failed:", error);
     return null;
@@ -43,49 +40,89 @@ export default function JobProcessingPage() {
   const router = useRouter();
   const params = useParams();
   const tempJobId = params.tempJobId as string;
-  const [error, setError] = useState<string | null>(null); // <-- Add error state
-
-  const processingStage: StageDisplayData = {
+  const [error, setError] = useState<string | null>(null);
+  // --- NEW STATE FOR DYNAMIC MESSAGES ---
+  const [statusMessage, setStatusMessage] = useState(
+    "Your transcription is being processed..."
+  );
+  const [stage, setStage] = useState<StageDisplayData>({
     name: "processing",
     label: "Processing on server...",
     progress: 0,
     isActive: true,
     isIndeterminate: true,
-  };
+  });
 
   useEffect(() => {
     if (!tempJobId) return;
 
-    // --- POLLING LOGIC WITH TIMEOUT ---
     const poll = setInterval(async () => {
-      try {
-        const finalJob = await checkJobCompletion(tempJobId);
-        if (finalJob) {
-          clearInterval(poll);
-          clearTimeout(timeout); // Clear the timeout if we get a result
-          if (finalJob.status === "COMPLETED") {
-            router.push(`/job/${finalJob.id}`);
-          } else {
-            // It must be FAILED
+      const jobState = await checkJobCompletion(tempJobId);
+
+      if (jobState) {
+        // --- NEW DYNAMIC MESSAGE LOGIC ---
+        switch (jobState.status) {
+          case "COMPLETED":
+            clearInterval(poll);
+            clearTimeout(timeout);
+            router.push(`/job/${jobState.id}`);
+            break;
+          case "FAILED":
+            clearInterval(poll);
+            clearTimeout(timeout);
             setError(
-              finalJob.errorMessage || "The job failed for an unknown reason."
+              jobState.errorMessage || "The job failed for an unknown reason."
             );
-          }
+            break;
+          case "CHUNKING":
+            setStatusMessage("Preparing your large file for processing...");
+            setStage((prev) => ({
+              ...prev,
+              label: "Splitting into chunks...",
+              isIndeterminate: true,
+            }));
+            break;
+          case "PROCESSING_CHUNKS":
+            const progress = jobState.chunks_total
+              ? (jobState.chunks_completed || 0) / jobState.chunks_total
+              : 0;
+            setStatusMessage(
+              `Processing segment ${jobState.chunks_completed || 0} of ${
+                jobState.chunks_total
+              }...`
+            );
+            setStage({
+              name: "transcribing",
+              label: `Transcribing chunk ${jobState.chunks_completed || 0}/${
+                jobState.chunks_total
+              }`,
+              progress,
+              isActive: true,
+              isIndeterminate: false,
+            });
+            break;
+          case "ASSEMBLING":
+            setStatusMessage("Finalizing your transcript...");
+            setStage((prev) => ({
+              ...prev,
+              label: "Assembling transcript...",
+              progress: 1,
+              isIndeterminate: true,
+            }));
+            break;
+          default:
+            // Keep default "Processing" message for other states like PENDING or PROCESSING (for V1)
+            break;
         }
-      } catch (e) {
-        // This catches network errors during polling
-        console.error("Polling check failed:", e);
       }
     }, POLLING_INTERVAL);
 
-    // Set a timeout to stop polling after a while
     const timeout = setTimeout(() => {
       clearInterval(poll);
       setError(
-        "Processing is taking longer than expected. Please check your history later or try again."
+        "Processing is taking longer than expected. The job may still be running in the background. Please check your history later."
       );
     }, PROCESSING_TIMEOUT);
-    // --- END POLLING LOGIC ---
 
     return () => {
       clearInterval(poll);
@@ -116,8 +153,8 @@ export default function JobProcessingPage() {
   return (
     <StepperProvider>
       <ProcessingView
-        stage={processingStage}
-        currentOverallStatusMessage="Your transcription is being processed..."
+        stage={stage}
+        currentOverallStatusMessage={statusMessage}
         appSteps={APP_STEPS}
         currentAppStepId="process"
       />
