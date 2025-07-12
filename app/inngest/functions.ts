@@ -252,7 +252,7 @@ const mainWorker = inngest.createFunction(
 );
 
 const transcribeChunkWorker = inngest.createFunction(
-  {id: "transcribe-audio-chunk", concurrency: {limit: 20}},
+  {id: "transcribe-audio-chunk", concurrency: {limit: 3}},
   {event: "audio.chunk.ready"},
   async ({event, step}) => {
     const {parentJobId, chunkIndex, chunkUrl, transcriptionMode} = event.data;
