@@ -8,19 +8,19 @@ import {APP_STEPS, StageDisplayData} from "@/types/app";
 import {StepperProvider} from "@/app/contexts/StepperContext";
 import StyledButton from "@/components/StyledButton";
 
-const POLLING_INTERVAL = 3000;
-const PROCESSING_TIMEOUT = 15 * 60 * 1000; // Increased to 15 mins for large files
+const POLLING_INTERVAL = 3000; // 3 seconds
+// Increased timeout for potentially very long sequential jobs
+const PROCESSING_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
-// We'll define a type for the polling response for clarity
 interface JobStatusResponse {
   id: string;
   status: string;
   errorMessage?: string | null;
+  processing_strategy?: string | null;
   chunks_total?: number | null;
   chunks_completed?: number | null;
 }
 
-// This is a simple client-side poller.
 async function checkJobCompletion(
   identifier: string
 ): Promise<JobStatusResponse | null> {
@@ -39,28 +39,26 @@ async function checkJobCompletion(
 export default function JobProcessingPage() {
   const router = useRouter();
   const params = useParams();
-  const tempJobId = params.tempJobId as string;
+  const jobId = params.tempJobId as string;
   const [error, setError] = useState<string | null>(null);
-  // --- NEW STATE FOR DYNAMIC MESSAGES ---
   const [statusMessage, setStatusMessage] = useState(
-    "Your transcription is being processed..."
+    "Your transcription is being prepared..."
   );
   const [stage, setStage] = useState<StageDisplayData>({
-    name: "processing",
-    label: "Processing on server...",
+    name: "preparing",
+    label: "Preparing...",
     progress: 0,
     isActive: true,
     isIndeterminate: true,
   });
 
   useEffect(() => {
-    if (!tempJobId) return;
+    if (!jobId) return;
 
     const poll = setInterval(async () => {
-      const jobState = await checkJobCompletion(tempJobId);
+      const jobState = await checkJobCompletion(jobId);
 
       if (jobState) {
-        // --- NEW DYNAMIC MESSAGE LOGIC ---
         switch (jobState.status) {
           case "COMPLETED":
             clearInterval(poll);
@@ -74,28 +72,34 @@ export default function JobProcessingPage() {
               jobState.errorMessage || "The job failed for an unknown reason."
             );
             break;
-          case "CHUNKING":
-            setStatusMessage("Preparing your large file for processing...");
+
+          // V1 Status
+          case "PROCESSING":
+            setStatusMessage("Transcribing your media...");
             setStage((prev) => ({
               ...prev,
-              label: "Splitting into chunks...",
+              label: "Transcription in progress...",
+              isIndeterminate: true,
+            }));
+            break;
+
+          // V2 Statuses
+          case "CHUNKING":
+            setStatusMessage("Preparing your large file...");
+            setStage((prev) => ({
+              ...prev,
+              label: "Splitting into manageable chunks...",
               isIndeterminate: true,
             }));
             break;
           case "PROCESSING_CHUNKS":
-            const progress = jobState.chunks_total
-              ? (jobState.chunks_completed || 0) / jobState.chunks_total
-              : 0;
-            setStatusMessage(
-              `Processing segment ${jobState.chunks_completed || 0} of ${
-                jobState.chunks_total
-              }...`
-            );
+            const total = jobState.chunks_total || 1;
+            const completed = jobState.chunks_completed || 0;
+            const progress = total > 0 ? completed / total : 0;
+            setStatusMessage(`Processing segment ${completed} of ${total}...`);
             setStage({
               name: "transcribing",
-              label: `Transcribing chunk ${jobState.chunks_completed || 0}/${
-                jobState.chunks_total
-              }`,
+              label: `Transcribing chunk ${completed}/${total}`,
               progress,
               isActive: true,
               isIndeterminate: false,
@@ -105,13 +109,10 @@ export default function JobProcessingPage() {
             setStatusMessage("Finalizing your transcript...");
             setStage((prev) => ({
               ...prev,
-              label: "Assembling transcript...",
+              label: "Assembling final result...",
               progress: 1,
               isIndeterminate: true,
             }));
-            break;
-          default:
-            // Keep default "Processing" message for other states like PENDING or PROCESSING (for V1)
             break;
         }
       }
@@ -120,7 +121,7 @@ export default function JobProcessingPage() {
     const timeout = setTimeout(() => {
       clearInterval(poll);
       setError(
-        "Processing is taking longer than expected. The job may still be running in the background. Please check your history later."
+        "Processing is taking longer than expected. The job may still be running in the background. Please check your history later for updates."
       );
     }, PROCESSING_TIMEOUT);
 
@@ -128,14 +129,13 @@ export default function JobProcessingPage() {
       clearInterval(poll);
       clearTimeout(timeout);
     };
-  }, [tempJobId, router]);
+  }, [jobId, router]);
 
-  // --- NEW ERROR UI ---
   if (error) {
     return (
       <div className="bg-[var(--card-bg)] p-8 rounded-xl shadow-xl w-full max-w-xl mx-auto text-center">
         <h2 className="text-xl font-bold text-red-500 mb-4">
-          Processing Failed
+          An Error Occurred
         </h2>
         <p className="my-4 text-[var(--text-primary)]">{error}</p>
         <StyledButton
@@ -148,7 +148,6 @@ export default function JobProcessingPage() {
       </div>
     );
   }
-  // --- END ERROR UI ---
 
   return (
     <StepperProvider>

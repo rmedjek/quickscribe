@@ -16,13 +16,11 @@ export type AppEvents = {
     };
   };
 
-  // --- NEW EVENTS FOR CHUNKING WORKFLOW ---
   "audio.chunk.ready": {
     data: {
       parentJobId: string;
       chunkIndex: number;
       chunkUrl: string;
-      // We also need to pass the transcription mode to the chunk worker
       transcriptionMode: TranscriptionMode;
     };
   };
@@ -32,7 +30,15 @@ export type AppEvents = {
       jobId: string;
     };
   };
-  // --- END NEW EVENTS ---
+
+  "audio.chunk.ready.v3": {
+    data: {
+      parentJobId: string;
+      chunkIndex: number;
+      chunkUrl: string;
+      transcriptionMode: TranscriptionMode;
+    };
+  };
 
   "app/revalidate": {
     data: {

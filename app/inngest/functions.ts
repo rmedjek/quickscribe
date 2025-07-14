@@ -1,7 +1,9 @@
 // app/inngest/functions.ts
 import prisma from "@/lib/prisma";
-import {prepareAudioFromFileBlob, splitAudio} from "@/lib/file-processor";
 import {JobStatus} from "@prisma/client";
+import {inngest} from "./client";
+import {env} from "@/lib/env.mjs";
+import {prepareAudioFromFileBlob, splitAudio} from "@/lib/file-processor";
 import {prepareAudioFromLink} from "@/lib/link-processor";
 import {transcribeAudioAction} from "@/actions/transcribeAudioAction";
 import {
@@ -13,25 +15,12 @@ import {R2} from "@/lib/r2";
 import * as fs from "node:fs/promises";
 import {revalidatePath} from "next/cache";
 import path from "node:path";
-import {AppEvents, inngest} from "./client";
-import {env} from "@/lib/env.mjs";
+import ffmpeg from "fluent-ffmpeg";
+import {promisify} from "util";
 
-function generateCaptionsFromText(
-  text: string,
-  startTime: number,
-  duration: number
-) {
-  const vttSegment = `${formatTimestamp(
-    startTime,
-    "vtt"
-  )} --> ${formatTimestamp(startTime + duration, "vtt")}\n${text}\n`;
-  const srtSegment = `1\n${formatTimestamp(
-    startTime,
-    "srt"
-  )} --> ${formatTimestamp(startTime + duration, "srt")}\n${text}\n`;
-  return {vtt: vttSegment, srt: srtSegment};
-}
+const ffprobeAsync = promisify<string, ffmpeg.FfprobeData>(ffmpeg.ffprobe);
 
+// --- HELPER FUNCTIONS ---
 function formatTimestamp(seconds: number, format: "srt" | "vtt"): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -47,8 +36,25 @@ function formatTimestamp(seconds: number, format: "srt" | "vtt"): string {
   )}`;
 }
 
+function generateCaptionsFromText(
+  text: string,
+  startTime: number,
+  duration: number
+) {
+  const vttSegment = `${formatTimestamp(
+    startTime,
+    "vtt"
+  )} --> ${formatTimestamp(startTime + duration, "vtt")}\n${text.trim()}\n`;
+  const srtSegment = `1\n${formatTimestamp(
+    startTime,
+    "srt"
+  )} --> ${formatTimestamp(startTime + duration, "srt")}\n${text.trim()}\n`;
+  return {vtt: vttSegment, srt: srtSegment};
+}
+
+// --- WORKER 1: The "Scheduler" Orchestrator ---
 const mainWorker = inngest.createFunction(
-  {id: "process-submitted-media", concurrency: {limit: 10}},
+  {id: "process-media-scheduler", concurrency: {limit: 2}},
   {event: "media.submitted"},
   async ({event, step}) => {
     const {
@@ -59,34 +65,24 @@ const mainWorker = inngest.createFunction(
       originalFileName,
       transcriptionMode,
     } = event.data;
-    let tempAudioPath: string | null = null;
 
-    console.log(`[Orchestrator] Starting job ${jobId}`);
-
-    try {
-      const prepResult = await step.run("1-prepare-audio", async () => {
-        return isLinkJob
+    const prepData = await step.run(
+      "1-prepare-and-decide-strategy",
+      async () => {
+        const prepResult = isLinkJob
           ? await prepareAudioFromLink(linkUrl!)
           : await prepareAudioFromFileBlob(blobUrl!, originalFileName!);
-      });
-      if (!prepResult.success) throw new Error(prepResult.error);
-      tempAudioPath = prepResult.tempAudioPath;
+        if (!prepResult.success) throw new Error(prepResult.error);
+        const stats = await fs.stat(prepResult.tempAudioPath);
+        const audioSizeMB = stats.size / (1024 * 1024);
+        const GROQ_LIMIT_MB = 24;
+        let strategy: "SINGLE" | "CHUNKED" =
+          audioSizeMB > GROQ_LIMIT_MB ? "CHUNKED" : "SINGLE";
+        if (env.FORCE_V1_PROCESSING === "true") {
+          strategy = "SINGLE";
+        }
 
-      const stats = await fs.stat(tempAudioPath);
-      const audioSizeMB = stats.size / (1024 * 1024);
-      const GROQ_LIMIT_MB = 24;
-      let strategy: "SINGLE" | "CHUNKED" =
-        audioSizeMB > GROQ_LIMIT_MB ? "CHUNKED" : "SINGLE";
-
-      if (env.FORCE_V1_PROCESSING === "true") {
-        strategy = "SINGLE";
-        console.log(
-          `[Orchestrator] FORCE_V1_PROCESSING is true. Forcing SINGLE strategy for job ${jobId}.`
-        );
-      }
-
-      await step.run("set-processing-strategy-and-status", () =>
-        prisma.transcriptionJob.update({
+        await prisma.transcriptionJob.update({
           where: {id: jobId},
           data: {
             processing_strategy: strategy,
@@ -94,31 +90,31 @@ const mainWorker = inngest.createFunction(
               strategy === "SINGLE" ? JobStatus.PROCESSING : JobStatus.CHUNKING,
             startedAt: new Date(),
           },
-        })
-      );
-      revalidatePath("/");
-      console.log(`[Orchestrator] Job ${jobId} assigned strategy: ${strategy}`);
+        });
+        revalidatePath("/");
+        return {strategy, tempAudioPath: prepResult.tempAudioPath};
+      }
+    );
 
-      if (strategy === "SINGLE") {
+    if (!prepData) throw new Error("Preparation step failed to resume.");
+
+    try {
+      if (prepData.strategy === "SINGLE") {
         const transcriptionResult = await step.run(
           "2a-transcribe-single-file",
           async () => {
-            const audioBuffer = await fs.readFile(tempAudioPath!);
-            const formData = new FormData();
-            formData.append(
-              "audioBlob",
-              new Blob([audioBuffer], {type: "audio/opus"}),
-              prepResult.audioFileName
+            const audioBuffer = await fs.readFile(prepData.tempAudioPath);
+            return await transcribeAudioAction(
+              audioBuffer,
+              "source.opus",
+              transcriptionMode
             );
-            return await transcribeAudioAction(formData, transcriptionMode);
           }
         );
-
-        if (!transcriptionResult.success || !transcriptionResult.data) {
+        if (!transcriptionResult?.success)
           throw new Error(
-            transcriptionResult.error || "Transcription returned no data."
+            transcriptionResult?.error || "Transcription returned no data."
           );
-        }
 
         await step.run("3a-update-final-job", async () => {
           return prisma.transcriptionJob.update({
@@ -144,31 +140,30 @@ const mainWorker = inngest.createFunction(
               Key: key,
             });
             await R2.send(deleteCommand);
-            console.log(`[V1-Worker] Cleaned up source blob from R2: ${key}`);
           });
         }
-        console.log(`[V1-Worker] Job ${jobId} completed successfully.`);
       } else {
-        const splitResult = await step.run(
-          "3b-split-audio-into-chunks",
+        // CHUNKED
+        const chunks = await step.run(
+          "2b-split-and-upload-chunks",
           async () => {
-            return await splitAudio(tempAudioPath!, jobId);
-          }
-        );
-        if (!splitResult.success) throw new Error(splitResult.error);
-
-        const chunkEvents = await step.run(
-          "4b-upload-chunks-and-prepare-events",
-          async () => {
-            const events: {
-              name: "audio.chunk.ready";
-              data: AppEvents["audio.chunk.ready"]["data"];
-            }[] = [];
-
+            const probeData = await ffprobeAsync(prepData.tempAudioPath);
+            const totalDuration = probeData.format.duration || 0;
+            const stats = await fs.stat(prepData.tempAudioPath);
+            const totalSizeMB = stats.size / (1024 * 1024);
+            const TARGET_CHUNK_SIZE_MB = 24;
+            const numChunks = Math.ceil(totalSizeMB / TARGET_CHUNK_SIZE_MB);
+            const chunkDurationSec = Math.ceil(totalDuration / numChunks);
+            const splitResult = await splitAudio(
+              prepData.tempAudioPath,
+              jobId,
+              chunkDurationSec
+            );
+            if (!splitResult.success) throw new Error(splitResult.error);
+            const chunkDataForScheduling = [];
             for (const chunk of splitResult.chunks) {
               const chunkFileBuffer = await fs.readFile(chunk.filePath);
               const key = `chunks/${jobId}/${chunk.fileName}`;
-
               const putCommand = new PutObjectCommand({
                 Bucket: env.R2_BUCKET_NAME,
                 Key: key,
@@ -177,54 +172,58 @@ const mainWorker = inngest.createFunction(
               });
               await R2.send(putCommand);
               const chunkUrl = `https://${env.R2_PUBLIC_HOSTNAME}/${key}`;
-
               await prisma.jobChunk.create({
                 data: {
-                  jobId: jobId,
+                  jobId,
                   chunk_index: chunk.index,
                   start_time: chunk.startTime,
                   end_time: chunk.endTime,
                   blob_url: chunkUrl,
-                  status: JobStatus.PENDING,
+                  status: "PENDING",
                 },
               });
-
-              events.push({
-                name: "audio.chunk.ready",
-                data: {
-                  parentJobId: jobId,
-                  chunkIndex: chunk.index,
-                  chunkUrl: chunkUrl,
-                  transcriptionMode: transcriptionMode,
-                },
-              });
+              chunkDataForScheduling.push({index: chunk.index, url: chunkUrl});
               await fs.unlink(chunk.filePath);
             }
-
             await fs.rm(path.dirname(splitResult.chunks[0].filePath), {
               recursive: true,
               force: true,
             });
-            return events;
+            await prisma.transcriptionJob.update({
+              where: {id: jobId},
+              data: {chunks_total: splitResult.chunks.length},
+            });
+            return chunkDataForScheduling;
           }
         );
 
-        await step.sendEvent("5b-fan-out-chunk-jobs", chunkEvents);
+        if (!chunks)
+          throw new Error("Chunk splitting step did not resume correctly.");
 
-        await step.run("6b-update-job-for-processing", () =>
+        const eventsToSchedule = chunks.map((chunk, i) => {
+          const COOLDOWN_MINUTES = 2;
+          const delay = i === 0 ? "0s" : `${i * COOLDOWN_MINUTES}m`;
+          return {
+            name: "audio.chunk.ready.v3" as const,
+            data: {
+              parentJobId: jobId,
+              chunkIndex: chunk.index,
+              chunkUrl: chunk.url,
+              transcriptionMode,
+            },
+            after: delay,
+          };
+        });
+
+        await step.sendEvent("3b-schedule-chunk-jobs", eventsToSchedule);
+
+        await step.run("4b-update-status-to-processing-chunks", () =>
           prisma.transcriptionJob.update({
             where: {id: jobId},
-            data: {
-              status: JobStatus.PROCESSING_CHUNKS,
-              chunks_total: chunkEvents.length,
-            },
+            data: {status: JobStatus.PROCESSING_CHUNKS},
           })
         );
-        console.log(
-          `[V2-Orchestrator] Fanned out ${chunkEvents.length} jobs for job: ${jobId}`
-        );
       }
-      revalidatePath("/");
     } catch (error: any) {
       console.error(`[Orchestrator] Error processing job ${jobId}:`, error);
       await step.run("x-update-failure-in-db", async () => {
@@ -240,70 +239,48 @@ const mainWorker = inngest.createFunction(
       revalidatePath("/");
       throw error;
     } finally {
-      if (tempAudioPath) {
+      if (prepData?.tempAudioPath) {
         await fs
-          .unlink(tempAudioPath)
-          .catch((e) =>
-            console.error(`Cleanup failed for ${tempAudioPath}`, e)
-          );
+          .unlink(prepData.tempAudioPath)
+          .catch((e) => console.error(`Temp file cleanup failed`, e));
       }
     }
   }
 );
 
+// --- WORKER 2: The "Dumb" Processor ---
 const transcribeChunkWorker = inngest.createFunction(
-  {id: "transcribe-audio-chunk", concurrency: {limit: 3}},
-  {event: "audio.chunk.ready"},
+  {id: "transcribe-audio-chunk-v3"},
+  {event: "audio.chunk.ready.v3"},
   async ({event, step}) => {
     const {parentJobId, chunkIndex, chunkUrl, transcriptionMode} = event.data;
-    console.log(
-      `[V2-ChunkWorker] Processing chunk ${chunkIndex} for job ${parentJobId}`
-    );
-
     try {
-      // --- THIS IS THE REFACTOR ---
-      // 1. Download the audio chunk directly, OUTSIDE of a step.
-      // The function's ephemeral filesystem will hold the data.
-      console.log(`[V2-ChunkWorker] Downloading chunk from ${chunkUrl}`);
-      const response = await fetch(chunkUrl);
-      if (!response.ok)
-        throw new Error(`Failed to download chunk ${chunkIndex}`);
-      const audioBuffer = Buffer.from(await response.arrayBuffer());
-      console.log(
-        `[V2-ChunkWorker] Downloaded chunk ${chunkIndex}, size: ${audioBuffer.length} bytes`
-      );
-
-      // 2. Now, use steps for the parts that change state or call external APIs.
-      await step.run("update-chunk-status-to-processing", async () => {
-        await prisma.jobChunk.updateMany({
+      await step.run("update-chunk-status", () =>
+        prisma.jobChunk.updateMany({
           where: {jobId: parentJobId, chunk_index: chunkIndex},
           data: {status: "PROCESSING"},
-        });
-      });
+        })
+      );
 
-      // 3. The transcribe step now uses the buffer from the top-level scope.
       const transcriptionResult = await step.run(
-        "transcribe-chunk",
+        "transcribe-the-chunk",
         async () => {
-          const formData = new FormData();
-          formData.append(
-            "audioBlob",
-            new Blob([audioBuffer], {type: "audio/opus"}),
-            `chunk.opus`
+          const response = await fetch(chunkUrl);
+          if (!response.ok)
+            throw new Error(`Download failed for chunk ${chunkIndex}`);
+          const audioBuffer = Buffer.from(await response.arrayBuffer());
+          return await transcribeAudioAction(
+            audioBuffer,
+            `chunk_${chunkIndex}.opus`,
+            transcriptionMode
           );
-          return await transcribeAudioAction(formData, transcriptionMode);
         }
       );
-      // --- END REFACTOR ---
 
-      if (!transcriptionResult.success || !transcriptionResult.data?.text) {
-        throw new Error(
-          transcriptionResult.error ||
-            "Transcription of chunk failed to produce text."
-        );
-      }
+      if (!transcriptionResult.success)
+        throw new Error(transcriptionResult.error);
 
-      await step.run("save-chunk-transcript", async () => {
+      const updatedJob = await step.run("save-and-progress", async () => {
         await prisma.jobChunk.updateMany({
           where: {jobId: parentJobId, chunk_index: chunkIndex},
           data: {
@@ -311,48 +288,24 @@ const transcribeChunkWorker = inngest.createFunction(
             transcript: transcriptionResult.data!.text,
           },
         });
+        return await prisma.transcriptionJob.update({
+          where: {id: parentJobId},
+          data: {chunks_completed: {increment: 1}},
+        });
       });
 
-      const updatedJob = await step.run(
-        "increment-parent-job-progress",
-        async () => {
-          return prisma.transcriptionJob.update({
-            where: {id: parentJobId},
-            data: {
-              chunks_completed: {
-                increment: 1,
-              },
-            },
-          });
-        }
-      );
-
-      console.log(
-        `[V2-ChunkWorker] Completed chunk ${chunkIndex} for job ${parentJobId}`
-      );
-
-      if (updatedJob.chunks_completed === updatedJob.chunks_total) {
-        console.log(
-          `[V2-ChunkWorker] All chunks for job ${parentJobId} are complete. Triggering assembly.`
-        );
+      if (
+        updatedJob &&
+        updatedJob.chunks_completed === updatedJob.chunks_total
+      ) {
         await step.sendEvent("trigger-assembly", {
           name: "job.assembly.ready",
           data: {jobId: parentJobId},
         });
       }
-
-      return {success: true, chunkIndex};
-    } catch (error: any) {
-      console.error(
-        `[V2-ChunkWorker] Error processing chunk ${chunkIndex} for job ${parentJobId}:`,
-        error
-      );
-      await step.run("mark-chunk-as-failed", async () => {
-        await prisma.jobChunk.updateMany({
-          where: {jobId: parentJobId, chunk_index: chunkIndex},
-          data: {status: "FAILED"},
-        });
-      });
+    } catch (error) {
+      // Simple failure - just let Inngest's default retries handle it.
+      // The long delay between jobs will prevent cascading failures.
       await step.run("mark-parent-job-as-failed", async () => {
         await prisma.transcriptionJob.update({
           where: {id: parentJobId},
@@ -362,118 +315,97 @@ const transcribeChunkWorker = inngest.createFunction(
           },
         });
       });
-      revalidatePath("/");
       throw error;
     }
   }
 );
 
+// --- WORKER 3: The Finalizer ---
 const assemblyWorker = inngest.createFunction(
   {id: "assemble-chunked-transcript"},
   {event: "job.assembly.ready"},
   async ({event, step}) => {
     const {jobId} = event.data;
-
-    console.log(
-      `[V2-AssemblyWorker] Assembling final transcript for job ${jobId}`
-    );
-
-    await step.run("update-status-to-assembling", () =>
-      prisma.transcriptionJob.update({
-        where: {id: jobId},
-        data: {status: JobStatus.ASSEMBLING},
-      })
-    );
-    revalidatePath("/");
-
     try {
-      const chunks = await step.run("fetch-all-chunks", async () => {
-        return prisma.jobChunk.findMany({
-          where: {jobId: jobId, status: "COMPLETED"},
-          orderBy: {chunk_index: "asc"},
-        });
-      });
-
-      const parentJob = await step.run("get-parent-job", async () => {
-        return prisma.transcriptionJob.findUnique({where: {id: jobId}});
-      });
-
-      if (!parentJob || chunks.length !== parentJob.chunks_total) {
-        throw new Error(
-          `Assembly failed: Mismatch in completed chunks. Expected ${parentJob?.chunks_total}, found ${chunks.length}.`
-        );
-      }
-
-      const finalResult = await step.run("stitch-transcripts", () => {
-        let combinedText = "";
-        let combinedSrt = "";
-        let combinedVtt = "WEBVTT\n\n";
-        let srtCounter = 1;
-
-        for (const chunk of chunks) {
-          if (chunk.transcript) {
-            combinedText += chunk.transcript + " ";
-
-            const {vtt: vttSegment, srt: srtSegment} = generateCaptionsFromText(
-              chunk.transcript,
-              chunk.start_time,
-              chunk.end_time - chunk.start_time
-            );
-
-            combinedVtt += vttSegment + "\n";
-            combinedSrt +=
-              srtSegment.replace(/^1\n/, `${srtCounter++}\n`) + "\n";
-          }
-        }
-        return {
-          text: combinedText.trim(),
-          srt: combinedSrt.trim(),
-          vtt: combinedVtt.trim(),
-        };
-      });
-
-      await step.run("update-parent-job-with-final-transcript", async () => {
-        return prisma.transcriptionJob.update({
+      await step.run("update-status-to-assembling", () =>
+        prisma.transcriptionJob.update({
           where: {id: jobId},
-          data: {
-            status: JobStatus.COMPLETED,
-            completedAt: new Date(),
-            transcriptText: finalResult.text,
-            transcriptSrt: finalResult.srt,
-            transcriptVtt: finalResult.vtt,
-            errorMessage: null,
-          },
-        });
-      });
-
+          data: {status: JobStatus.ASSEMBLING},
+        })
+      );
       revalidatePath("/");
-      console.log(`[V2-AssemblyWorker] Successfully assembled job ${jobId}`);
+
+      const {text, srt, vtt} = await step.run(
+        "stitch-transcripts",
+        async () => {
+          const finalChunks = await prisma.jobChunk.findMany({
+            where: {jobId, status: "COMPLETED"},
+            orderBy: {chunk_index: "asc"},
+          });
+          let combinedText = "";
+          let combinedSrt = "";
+          let combinedVtt = "WEBVTT\n\n";
+          let srtCounter = 1;
+          for (const chunk of finalChunks) {
+            if (chunk.transcript) {
+              combinedText += chunk.transcript + " ";
+              const duration = chunk.end_time - chunk.start_time;
+              const {vtt: vttSegment, srt: srtSegment} =
+                generateCaptionsFromText(
+                  chunk.transcript,
+                  chunk.start_time,
+                  duration
+                );
+              combinedVtt += vttSegment + "\n";
+              combinedSrt +=
+                srtSegment.replace(/^1\n/, `${srtCounter++}\n`) + "\n";
+            }
+          }
+          return {
+            text: combinedText.trim(),
+            srt: combinedSrt.trim(),
+            vtt: combinedVtt.trim(),
+          };
+        }
+      );
+
+      const parentJob = await step.run(
+        "update-final-job-and-get-urls",
+        async () => {
+          return prisma.transcriptionJob.update({
+            where: {id: jobId},
+            data: {
+              status: JobStatus.COMPLETED,
+              completedAt: new Date(),
+              transcriptText: text,
+              transcriptSrt: srt,
+              transcriptVtt: vtt,
+              errorMessage: null,
+            },
+            include: {chunks: true},
+          });
+        }
+      );
+      revalidatePath("/");
 
       await step.run("cleanup-all-r2-files", async () => {
-        const chunkKeys = chunks.map((c) =>
+        const chunkKeys = parentJob.chunks.map((c) =>
           new URL(c.blob_url).pathname.substring(1)
         );
         const sourceKey = new URL(parentJob.fileUrl).pathname.substring(1);
         const keysToDelete = [...chunkKeys, sourceKey].map((key) => ({
           Key: key,
         }));
-
-        const deleteCommand = new DeleteObjectsCommand({
-          Bucket: env.R2_BUCKET_NAME,
-          Delete: {Objects: keysToDelete},
-        });
-        await R2.send(deleteCommand);
-        console.log(
-          `[V2-AssemblyWorker] Cleaned up source file and ${chunkKeys.length} chunks from R2 for job ${jobId}`
-        );
+        if (keysToDelete.length > 0) {
+          const deleteCommand = new DeleteObjectsCommand({
+            Bucket: env.R2_BUCKET_NAME,
+            Delete: {Objects: keysToDelete},
+          });
+          await R2.send(deleteCommand);
+        }
       });
-
-      return {success: true, jobId};
     } catch (error: any) {
-      console.error(
-        `[V2-AssemblyWorker] Error assembling job ${jobId}:`,
-        error
-      );
+      console.error(`[AssemblyWorker] Error assembling job ${jobId}:`, error);
       await step.run("mark-assembly-as-failed", async () => {
         await prisma.transcriptionJob.update({
           where: {id: jobId},

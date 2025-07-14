@@ -14,7 +14,6 @@ export async function POST(request: Request) {
   }
 
   const {filename, contentType} = await request.json();
-
   // Generate a unique key for the file to prevent overwrites
   const randomSuffix = crypto.randomBytes(5).toString("hex");
   const key = `${session.user.id}/${randomSuffix}-${filename}`;

@@ -18,7 +18,7 @@ import ProcessingView from "@/components/ProcessingView";
 import {StepperProvider, useStepper} from "../contexts/StepperContext";
 import {usePage} from "../contexts/PageContext";
 
-const LARGE_FILE_THRESHOLD_BYTES = 20 * 1024 * 1024;
+// const LARGE_FILE_THRESHOLD_BYTES = 20 * 1024 * 1024;
 
 enum ViewState {
   SelectingInput,
@@ -101,7 +101,8 @@ function NewTranscriptionContent() {
           ...prev!,
           label: "Uploading File...",
           progress: 0.1,
-        })); // Indicate progress
+          isIndeterminate: true,
+        }));
 
         // 2. Upload the file directly to R2 using the presigned URL
         // Note: For real progress, we'd use XMLHttpRequest, but fetch is simpler for now.
@@ -121,20 +122,16 @@ function NewTranscriptionContent() {
 
         // 3. Submit the job to our backend with the public R2 URL
         const hash = await calculateFileHash(file);
-        const strategy =
-          file.size > LARGE_FILE_THRESHOLD_BYTES ? "CHUNKED" : "SINGLE";
-
         result = await submitMediaJob({
           type: "file",
-          blobUrl: publicUrl, // Use the final public R2 URL
+          blobUrl: publicUrl,
           originalFileName: file.name,
           fileHash: hash,
           fileSize: file.size,
-          processingStrategy: strategy,
+          processingStrategy: "SINGLE", // The server will decide the real strategy
           transcriptionMode: mode,
         });
       } else if (link) {
-        // Link logic remains the same
         setStatusText("Submitting your link...");
         setActiveStage({
           name: "create",
