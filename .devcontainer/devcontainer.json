@@ -1,0 +1,9 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "features": {
+    "ghcr.io/devcontainers/features/ffmpeg:1": {},
+    "ghcr.io/devcontainers/features/python:1": {}
+  },
+  "postCreateCommand": "pip install yt-dlp faster-whisper pyannote-audio && npm install && npm run dev",
+  "forwardPorts": [3000, 7233]
+}
