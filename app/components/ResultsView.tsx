@@ -1,368 +1,99 @@
 // app/components/ResultsView.tsx
 "use client";
 
-import React, {useState, useRef, useEffect} from "react";
+import React, {useState, useMemo} from "react";
 import {
   CheckCircle2,
   ClipboardCopy,
   Download,
   Brain,
-  Loader2,
   ListChecks,
   HelpCircle,
   Send,
-  ClipboardCheck,
-  Trash2,
-  Hash,
-  Mail,
+  User,
 } from "lucide-react";
 import StyledButton from "./StyledButton";
 import DownloadButton from "./DownloadButton";
-import Modal from "./Modal";
-import {DetailedTranscriptionResult} from "@/actions/transcribeAudioAction";
-import {TranscriptionMode} from "./ConfirmationView";
-import {
-  AIInteractionTaskType,
-  AIInteractionParams,
-} from "@/actions/interactWithTranscriptAction";
-import {APP_STEPS, TRANSCRIPTION_MODEL_DISPLAY_NAMES} from "@/types/app";
-import type {AppStep} from "@/types/app";
-import {AiResultCard, AiResultItem} from "./AiResultCard";
+import {APP_STEPS} from "@/types/app";
 import ProgressStepper from "./ProgressStepper";
-
-const AI_INTERACTION_API_ENDPOINT = "/api/ai_interaction";
+import type {TranscriptionJob} from "@prisma/client";
+import {askQuestionAboutTranscript} from "@/actions/aiActions";
+import {InsightCard} from "./InsightCard";
 
 interface Props {
-  transcriptionData: DetailedTranscriptionResult;
-  transcriptLanguage: string;
-  mode: TranscriptionMode;
+  job: TranscriptionJob & {ai_results: any | null}; // Ensure ai_results is typed
   onRestart: () => void;
 }
 
-export default function ResultsView({
-  transcriptionData,
-  transcriptLanguage,
-  mode,
-  onRestart,
-}: Props) {
+export default function ResultsView({job, onRestart}: Props) {
   const [copied, setCopied] = useState(false);
   const [zipping, setZipping] = useState(false);
-  const [activeAiTask, setActiveAiTask] =
-    useState<AIInteractionTaskType | null>(null);
-  const [isStreamingAi, setIsStreamingAi] = useState(false);
-  const [aiResults, setAiResults] = useState<AiResultItem[]>([]);
-  const [globalAiError, setGlobalAiError] = useState<string | null>(null);
-  const [expandedResultId, setExpandedResultId] = useState<string | null>(null);
-  const [customQuestion, setCustomQuestion] = useState("");
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const [newlyAddedResultId, setNewlyAddedResultId] = useState<string | null>(
-    null
-  );
-  const [copiedListItemId, setCopiedListItemId] = useState<string | null>(null);
-  const [aiOutputLanguage, setAiOutputLanguage] = useState(transcriptLanguage);
-  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
-  const [draftedEmail, setDraftedEmail] = useState<{
-    subject: string;
-    body: string;
-  } | null>(null);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [isAnswering, setIsAnswering] = useState(false);
+  const [qaError, setQaError] = useState<string | null>(null);
 
-  const aiQuickTools: {
-    name: string;
-    taskType: AIInteractionTaskType;
-    icon: React.ElementType;
-    description: string;
-  }[] = [
-    {
-      name: "Summarize",
-      taskType: "summarize",
-      icon: Brain,
-      description: "Get a concise summary.",
-    },
-    {
-      name: "Key Points",
-      taskType: "extract_key_points",
-      icon: ListChecks,
-      description: "List the main takeaways.",
-    },
-    {
-      name: "Action Items",
-      taskType: "extract_action_items",
-      icon: ClipboardCheck,
-      description: "Find tasks and to-dos.",
-    },
-    {
-      name: "Topics",
-      taskType: "identify_topics",
-      icon: Hash,
-      description: "Discover the main subjects.",
-    },
-    {
-      name: "Draft Email",
-      taskType: "draft_email",
-      icon: Mail,
-      description: "Create a summary email.",
-    },
-  ];
-
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-    };
-  }, []);
-  useEffect(() => {
-    if (newlyAddedResultId) {
-      const timer = setTimeout(() => setNewlyAddedResultId(null), 1500);
-      return () => clearTimeout(timer);
+  const aiResults = useMemo(() => {
+    if (job.ai_results && typeof job.ai_results === "object") {
+      return job.ai_results;
     }
-  }, [newlyAddedResultId]);
-  useEffect(() => {
-    setAiOutputLanguage(transcriptLanguage);
-  }, [transcriptLanguage]);
+    return null;
+  }, [job.ai_results]);
 
-  const copyText = () => {
-    navigator.clipboard.writeText(transcriptionData.text).then(() => {
+  const copyText = (textToCopy: string | null) => {
+    if (!textToCopy) return;
+    navigator.clipboard.writeText(textToCopy).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   };
 
-  const getTaskDisplayName = (taskType: AIInteractionTaskType): string => {
-    if (taskType === "custom_question") return "Q&A Answer";
-    if (taskType === "draft_email") return "Email Draft";
-    return (
-      aiQuickTools.find((t) => t.taskType === taskType)?.name || "AI Result"
-    );
+  const handleQuestionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!question.trim() || !job.transcriptText || !job.external_id) {
+      setQaError("Cannot ask question without a transcript ID.");
+      return;
+    }
+    setIsAnswering(true);
+    setAnswer(null);
+    setQaError(null);
+    const result = await askQuestionAboutTranscript(job.external_id, question);
+    if (result.success) {
+      setAnswer(result.answer!);
+    } else {
+      setQaError(result.error!);
+    }
+    setIsAnswering(false);
+    setQuestion("");
   };
-  // Inside ResultsView.tsx
 
   const zipAll = async () => {
     setZipping(true);
     try {
-      // Dynamically import JSZip only when needed ---
       const JSZip = (await import("jszip")).default;
       const zip = new JSZip();
-
-      zip.file("transcript.txt", transcriptionData.text);
-      if (transcriptionData.srtContent) {
-        zip.file("transcript.srt", transcriptionData.srtContent);
+      if (job.transcriptText) zip.file("transcript.txt", job.transcriptText);
+      if (job.transcriptSrt) zip.file("transcript.srt", job.transcriptSrt);
+      if (job.transcriptVtt) zip.file("transcript.vtt", job.transcriptVtt);
+      if (aiResults) {
+        zip.file("ai_insights.json", JSON.stringify(aiResults, null, 2));
       }
-      if (transcriptionData.vttContent) {
-        zip.file("transcript.vtt", transcriptionData.vttContent);
-      }
-
-      if (aiResults.length > 0) {
-        const aiFolder = zip.folder("ai-insights");
-        if (aiFolder) {
-          aiResults.forEach((result) => {
-            if (result.text && !result.error) {
-              const fileName = `${result.taskType.replace(/_/g, "-")}.md`;
-              const fileContent = `--- QuickScribe AI Insight ---\n\nTool: ${getTaskDisplayName(
-                result.taskType
-              )}\nGenerated: ${new Date().toLocaleString()}\nTruncated: ${
-                result.wasTruncated
-              }\n\n---\n\n${result.text}`;
-              aiFolder.file(fileName, fileContent);
-            }
-          });
-        }
-      }
-
       const blob = await zip.generateAsync({type: "blob"});
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = "quickscribe-results.zip";
-      document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error creating zip file:", err);
-      setGlobalAiError("Failed to create the zip file.");
     } finally {
       setZipping(false);
     }
   };
 
-  const handleRemoveResult = (idToRemove: string) => {
-    setAiResults((prev) => prev.filter((r) => r.id !== idToRemove));
-    if (expandedResultId === idToRemove) setExpandedResultId(null);
-  };
-  const toggleResultExpansion = (id: string) => {
-    setExpandedResultId((prevId) => (prevId === id ? null : id));
-  };
-  const handleClearAllAiResults = () => {
-    setAiResults([]);
-    setExpandedResultId(null);
-    setGlobalAiError(null);
-    setNewlyAddedResultId(null);
-  };
-  const handleCopyListItem = (
-    itemText: string,
-    resultId: string,
-    itemIndex: number
-  ) => {
-    const uid = `${resultId}-${itemIndex}`;
-    setCopiedListItemId(uid);
-    setTimeout(() => {
-      setCopiedListItemId((p) => (p === uid ? null : p));
-    }, 2000);
-  };
-  const handleQuestionSubmitForm = (e: React.FormEvent) => {
-    e.preventDefault();
-    handleGenericAiStreamTask("custom_question", customQuestion);
-  };
-
-  const handleGenericAiStreamTask = async (
-    taskType: AIInteractionTaskType,
-    questionForTask?: string,
-    forceRegenerate = false
-  ) => {
-    if (!transcriptionData.text || (isStreamingAi && activeAiTask === taskType))
-      return;
-
-    if (taskType !== "custom_question" && !forceRegenerate) {
-      const existingResult = aiResults.find(
-        (r) => r.taskType === taskType && !r.error
-      );
-      if (existingResult) {
-        setExpandedResultId(existingResult.id);
-        setNewlyAddedResultId(existingResult.id);
-        return;
-      }
-    }
-
-    if (
-      taskType === "custom_question" &&
-      (!questionForTask || questionForTask.trim() === "")
-    ) {
-      setGlobalAiError("Please enter a question.");
-      return;
-    }
-
-    if (isStreamingAi) abortControllerRef.current?.abort();
-    abortControllerRef.current = new AbortController();
-
-    setIsStreamingAi(true);
-    setActiveAiTask(taskType);
-    setGlobalAiError(null);
-    const newResultId = `${taskType}-${Date.now()}`;
-
-    if (taskType !== "draft_email") {
-      const placeholder: AiResultItem = {
-        id: newResultId,
-        taskType,
-        text: "",
-        wasTruncated: false,
-        isStreaming: true,
-      };
-      setAiResults((prev) => [
-        placeholder,
-        ...(forceRegenerate
-          ? prev.filter((r) => r.taskType !== taskType)
-          : prev),
-      ]);
-      setExpandedResultId(newResultId);
-    } else {
-      setDraftedEmail(null);
-    }
-
-    if (taskType === "custom_question") setCustomQuestion("");
-
-    const body: AIInteractionParams = {
-      transcriptText: transcriptionData.text,
-      taskType,
-      customPrompt: questionForTask,
-      outputLanguage: aiOutputLanguage,
-    };
-
-    let wasTruncated = false;
-    let accumulatedText = "";
-
-    try {
-      const response = await fetch(AI_INTERACTION_API_ENDPOINT, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(body),
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (response.headers.get("X-Content-Truncated") === "true") {
-        wasTruncated = true;
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `API Error: ${response.status}`);
-      }
-
-      if (!response.body) throw new Error("Response body is null.");
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      while (true) {
-        const {done, value} = await reader.read();
-        if (done) break;
-        accumulatedText += decoder.decode(value, {stream: true});
-
-        if (taskType !== "draft_email") {
-          setAiResults((curr) =>
-            curr.map((r) =>
-              r.id === newResultId
-                ? {...r, text: accumulatedText, wasTruncated}
-                : r
-            )
-          );
-        }
-      }
-
-      if (!abortControllerRef.current?.signal.aborted) {
-        if (taskType === "draft_email") {
-          const subjectMatch = accumulatedText.match(/Subject: (.*)/);
-          const bodyMatch = accumulatedText.match(/Body: ([\s\S]*)/);
-          setDraftedEmail({
-            subject: subjectMatch?.[1].trim() || "Summary",
-            body: bodyMatch?.[1].trim() || accumulatedText,
-          });
-          setIsEmailModalOpen(true);
-        } else {
-          setAiResults((curr) =>
-            curr.map((r) =>
-              r.id === newResultId
-                ? {...r, isStreaming: false, wasTruncated}
-                : r
-            )
-          );
-          setNewlyAddedResultId(newResultId);
-        }
-      }
-    } catch (error: any) {
-      if (error.name !== "AbortError") {
-        if (taskType !== "draft_email") {
-          setAiResults((curr) =>
-            curr.map((r) =>
-              r.id === newResultId
-                ? {...r, isStreaming: false, error: error.message}
-                : r
-            )
-          );
-        } else {
-          setGlobalAiError(error.message);
-        }
-      } else {
-        if (taskType !== "draft_email")
-          setAiResults((curr) => curr.filter((r) => r.id !== newResultId));
-      }
-    } finally {
-      setIsStreamingAi(false);
-      setActiveAiTask(null);
-      abortControllerRef.current = null;
-    }
-  };
-
   return (
-    <div className="bg-[var(--card-bg)] text-[var(--text-primary)] border border-transparent dark:border-[var(--border-color)] p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-4xl mx-auto">
-      {" "}
+    <div className="bg-[var(--card-bg)] text-[var(--text-primary)] p-6 sm:p-8 rounded-xl shadow-xl w-full max-w-4xl mx-auto">
       <div className="text-center mb-6">
         <ProgressStepper steps={APP_STEPS} variant="completed" />
         <div className="flex justify-center my-6">
@@ -371,20 +102,19 @@ export default function ResultsView({
         <h1 className="text-2xl font-bold">
           Transcript Generated Successfully!
         </h1>
-        <p className="text-sm text-[var(--text-secondary)] mt-2">
-          Using <strong>{TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode]}</strong> mode.
+        <p className="text-sm text-[var(--text-secondary)] mt-1">
+          Powered by AssemblyAI
         </p>
       </div>
+
       <div className="relative mb-8">
-        {/* --- THIS IS THE FIX for the Copy button --- */}
         <button
-          onClick={copyText}
+          onClick={() => copyText(job.transcriptText || "")}
           className="absolute right-3 top-3 p-1.5 rounded-md text-[var(--text-secondary)] bg-[var(--card-bg)] hover:bg-[var(--card-primary-bg)] dark:hover:bg-slate-600 transition-colors"
           title="Copy text"
         >
           <ClipboardCopy size={18} />
         </button>
-        {/* --- END FIX --- */}
         <span
           className={`absolute right-0 -top-6 text-xs font-medium text-green-600 dark:text-green-400 transition-opacity duration-200 ${
             copied ? "opacity-100" : "opacity-0"
@@ -392,15 +122,27 @@ export default function ResultsView({
         >
           Text Copied!
         </span>
-
-        <div className="max-h-56 overflow-y-auto p-4 rounded-xl bg-[var(--card-secondary-bg)] text-sm leading-relaxed text-[var(--text-primary)]">
-          {transcriptionData.text}
+        <div className="max-h-56 overflow-y-auto p-4 rounded-xl bg-[var(--card-secondary-bg)]">
+          {aiResults?.utterances?.length > 0 ? (
+            aiResults.utterances.map((utt: any) => (
+              <div key={utt.start} className="mb-2">
+                <p className="font-bold text-sky-500">
+                  <User size={14} className="inline-block mr-2" /> Speaker{" "}
+                  {utt.speaker}
+                </p>
+                <p className="ml-7 text-sm">{utt.text}</p>
+              </div>
+            ))
+          ) : (
+            <p className="whitespace-pre-wrap text-sm">{job.transcriptText}</p>
+          )}
         </div>
       </div>
+
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <DownloadButton
           label="TXT"
-          fileContent={transcriptionData.text}
+          fileContent={job.transcriptText || ""}
           fileName="transcript.txt"
           mimeType="text/plain"
           variant="secondary"
@@ -408,7 +150,7 @@ export default function ResultsView({
         />
         <DownloadButton
           label="VTT"
-          fileContent={transcriptionData.vttContent || ""}
+          fileContent={job.transcriptVtt || ""}
           fileName="transcript.vtt"
           mimeType="text/vtt"
           variant="secondary"
@@ -416,13 +158,14 @@ export default function ResultsView({
         />
         <DownloadButton
           label="SRT"
-          fileContent={transcriptionData.srtContent || ""}
+          fileContent={job.transcriptSrt || ""}
           fileName="transcript.srt"
           mimeType="application/x-subrip"
           variant="secondary"
           size="sm"
         />
       </div>
+
       <div className="flex justify-center mb-6">
         <StyledButton
           onClick={zipAll}
@@ -435,285 +178,73 @@ export default function ResultsView({
           {zipping ? "Zipping…" : "Download All (.zip)"}
         </StyledButton>
       </div>
-      {/* --- REFACTORED AI Interaction Section --- */}
-      <div className="my-8 py-6 border-t border-b border-[var(--border-color)] space-y-8">
-        {/* --- AI Insights Grid --- */}
-        <div>
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
-            <h3 className="text-lg font-semibold">AI Tools</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-[var(--text-prinmary)]">
-                Language:
-              </span>
 
-              <div className="inline-flex rounded-md shadow-sm bg-[var(--card-secondary-bg)] p-1">
-                <button
-                  onClick={() => setAiOutputLanguage(transcriptLanguage)}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                    aiOutputLanguage === transcriptLanguage
-                      ? "bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-300 font-semibold"
-                      : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/50"
-                  }`}
-                >
-                  {new Intl.DisplayNames(["en"], {type: "language"})
-                    .of(transcriptLanguage)
-                    ?.split(" ")[0] || transcriptLanguage.toUpperCase()}
-                </button>
-                {transcriptLanguage !== "en" && (
-                  <button
-                    onClick={() => setAiOutputLanguage("en")}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                      aiOutputLanguage === "en"
-                        ? "bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-300 font-semibold"
-                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/50"
-                    }`}
-                  >
-                    English
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+      <div className="my-8 py-6 border-t border-b border-[var(--border-color)] space-y-6">
+        <h3 className="text-lg font-semibold text-center">
+          AI-Powered Insights
+        </h3>
 
-          {/* --- THIS IS THE FIX for the AI Tool buttons --- */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {aiQuickTools.map((tool, index) => {
-              const isLoadingThisTool =
-                isStreamingAi && activeAiTask === tool.taskType;
-              const isLastItemAndOdd =
-                index === aiQuickTools.length - 1 &&
-                aiQuickTools.length % 2 !== 0;
+        {aiResults?.summary && (
+          <InsightCard title="Summary" icon={Brain}>
+            <p className="text-sm whitespace-pre-wrap">{aiResults.summary}</p>
+          </InsightCard>
+        )}
 
-              return (
-                <button
-                  key={tool.taskType}
-                  onClick={() => handleGenericAiStreamTask(tool.taskType)}
-                  disabled={isStreamingAi || !transcriptionData.text}
-                  className={`p-3 rounded-lg text-left transition-colors flex items-start space-x-3 
-                    ${
-                      isLastItemAndOdd
-                        ? "sm:col-span-2 sm:w-1/2 sm:mx-auto"
-                        : ""
-                    }
-                    ${
-                      isLoadingThisTool
-                        ? "bg-[var(--card-secondary-bg)] opacity-75 cursor-not-allowed"
-                        : "bg-[var(--card-secondary-bg)] hover:bg-slate-300 dark:hover:bg-slate-800"
-                    }`}
-                >
-                  <div className="flex-shrink-0 pt-0.5">
-                    {isLoadingThisTool ? (
-                      <Loader2
-                        size={18}
-                        className="animate-spin text-[var(--text-secondary)]"
-                      />
-                    ) : (
-                      <tool.icon
-                        size={18}
-                        className="text-sky-600 dark:text-sky-400"
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm text-[var(--text-primary)]">
-                      {isLoadingThisTool ? "Generating..." : tool.name}
-                    </div>
-                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                      {tool.description}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          {/* --- END FIX --- */}
-        </div>
+        {aiResults?.auto_highlights?.length > 0 && (
+          <InsightCard title="Key Highlights" icon={ListChecks}>
+            <ul className="space-y-2">
+              {aiResults.auto_highlights.map((highlight: any) => (
+                <li key={highlight.text} className="text-sm flex items-start">
+                  <span className="mr-2 mt-1 text-sky-500">•</span>
+                  <span>{highlight.text}</span>
+                </li>
+              ))}
+            </ul>
+          </InsightCard>
+        )}
 
-        {/* --- Q&A Section --- */}
         <div>
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <HelpCircle size={20} className="text-[var(--text-secondary)]" />
-            Ask a Question
+            <HelpCircle size={20} /> Ask a Question
           </h3>
-
-          <form onSubmit={handleQuestionSubmitForm} className="space-y-3">
+          <form onSubmit={handleQuestionSubmit} className="space-y-3">
             <div className="flex items-center space-x-2">
               <input
                 type="text"
-                value={customQuestion}
-                onChange={(e) => setCustomQuestion(e.target.value)}
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
                 placeholder="Ask anything about the transcript..."
                 className="flex-grow px-3 py-2 bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg focus:ring-2 focus:ring-sky-500 outline-none text-sm"
-                disabled={isStreamingAi || !transcriptionData.text}
+                disabled={isAnswering}
               />
               <StyledButton
                 type="submit"
                 variant="primary"
-                isLoading={isStreamingAi && activeAiTask === "custom_question"}
-                disabled={
-                  isStreamingAi ||
-                  !transcriptionData.text ||
-                  !customQuestion.trim()
-                }
-                className="!bg-sky-600 hover:!bg-sky-700"
+                isLoading={isAnswering}
+                disabled={!question.trim() || isAnswering}
                 size="icon"
               >
-                {!(isStreamingAi && activeAiTask === "custom_question") && (
-                  <Send size={18} />
-                )}
+                {!isAnswering && <Send size={18} />}
               </StyledButton>
             </div>
           </form>
-        </div>
-
-        <div className="mt-6 space-y-4">
-          {(aiResults.length > 0 || globalAiError) && (
-            <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-2">
-              <h4 className="text-base font-semibold">Generated Insights</h4>
-
-              {aiResults.length > 0 && !isStreamingAi && (
-                <StyledButton
-                  onClick={handleClearAllAiResults}
-                  variant="ghost"
-                  size="sm"
-                  className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-500"
-                  aria-label="Clear all AI results"
-                >
-                  <Trash2 size={14} className="mr-1.5" />
-                  Clear All
-                </StyledButton>
-              )}
+          {qaError && <p className="text-sm text-red-500 mt-2">{qaError}</p>}
+          {answer && (
+            <div className="mt-4 p-4 bg-[var(--card-secondary-bg)] rounded-lg">
+              <p className="text-sm whitespace-pre-wrap">{answer}</p>
             </div>
           )}
-          {globalAiError && !isStreamingAi && (
-            <div className="p-3 border border-red-300 rounded-lg bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">
-              <p className="break-words">
-                <strong>Error:</strong> {globalAiError}
-              </p>
-            </div>
-          )}
-          {aiResults.map((result) => (
-            <AiResultCard
-              key={result.id}
-              result={result}
-              isExpanded={
-                expandedResultId === result.id || result.isStreaming === true
-              }
-              onToggle={toggleResultExpansion}
-              onRemove={handleRemoveResult}
-              onRegenerate={(taskType) =>
-                handleGenericAiStreamTask(taskType, undefined, true)
-              }
-              onCopyListItem={handleCopyListItem}
-              copiedListItemId={copiedListItemId}
-              isAnyTaskStreaming={isStreamingAi}
-              getTaskDisplayName={getTaskDisplayName}
-              newlyAddedResultId={newlyAddedResultId}
-            />
-          ))}
         </div>
       </div>
-      <Modal
-        isOpen={isEmailModalOpen}
-        onClose={() => setIsEmailModalOpen(false)}
-        title="Draft Email Summary"
-      >
-        {draftedEmail && (
-          // --- THIS IS THE FIX for the Modal Content ---
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-[var(--text-secondary)]">
-                Subject
-              </label>
-              <div className="flex items-center space-x-2">
-                <input
-                  readOnly
-                  value={draftedEmail.subject}
-                  className="w-full p-2 border border-[var(--border-color)] rounded-md bg-[var(--card-secondary-bg)]"
-                />
-                <StyledButton
-                  variant="secondary"
-                  size="sm"
-                  onClick={() =>
-                    navigator.clipboard.writeText(draftedEmail.subject)
-                  }
-                >
-                  <ClipboardCopy size={16} className="mr-1.5" />
-                  Copy
-                </StyledButton>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-[var(--text-secondary)]">
-                Body
-              </label>
-              <div className="relative">
-                <textarea
-                  readOnly
-                  value={draftedEmail.body}
-                  className="w-full p-2 border border-[var(--border-color)] rounded-md bg-[var(--card-secondary-bg)] min-h-[250px] whitespace-pre-wrap"
-                />
-                <div className="absolute top-2 right-2">
-                  <StyledButton
-                    variant="secondary"
-                    size="sm"
-                    onClick={() =>
-                      navigator.clipboard.writeText(draftedEmail.body)
-                    }
-                  >
-                    <ClipboardCopy size={16} className="mr-1.5" />
-                    Copy Body
-                  </StyledButton>
-                </div>
-              </div>
-            </div>
-            <div className="pt-4 text-right">
-              <StyledButton onClick={() => setIsEmailModalOpen(false)}>
-                Close
-              </StyledButton>
-            </div>
-          </div>
-          // --- END FIX ---
-        )}
-      </Modal>
+
       <StyledButton
         onClick={onRestart}
         variant="secondary"
         size="lg"
-        className="w-full rounded-full mt-8 mb-6"
+        className="w-full rounded-full mt-8"
       >
         New Transcription
       </StyledButton>
-      <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
-        Transcription completed using{" "}
-        <strong>{TRANSCRIPTION_MODEL_DISPLAY_NAMES[mode]}</strong> mode.
-      </p>
     </div>
-  );
-}
-
-function GrayProgressStepper({steps}: {steps: AppStep[]}) {
-  return (
-    <nav aria-label="Progress" className="mb-8">
-      <ol role="list" className="relative flex items-start justify-between">
-        <div
-          className="absolute top-3.5 left-4 right-4 h-0.5 bg-gray-200 dark:bg-slate-700"
-          aria-hidden="true"
-        />
-        {steps.map((step) => (
-          <li
-            key={step.id}
-            className="relative flex flex-col items-center w-1/3"
-          >
-            <div className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full bg-gray-400 dark:bg-slate-600 text-white">
-              <step.icon className="h-5 w-5" />
-            </div>
-            <p className="text-xs text-center mt-2 w-20 truncate text-gray-500 dark:text-slate-400">
-              {step.name}
-            </p>
-          </li>
-        ))}
-      </ol>
-    </nav>
   );
 }

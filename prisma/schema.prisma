@@ -51,6 +51,7 @@ model TranscriptionJob {
   language     String?
   duration     Float?
   errorMessage String? @db.Text
+  ai_results   Json?
 
   // Lifecycle Timestamps
   createdAt   DateTime  @default(now())
@@ -59,11 +60,32 @@ model TranscriptionJob {
   completedAt DateTime?
 
   // Relation to User
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  userId              String
+  processing_strategy String?    @default("SINGLE")
+  chunks_total        Int?
+  chunks_completed    Int?       @default(0)
+  external_id         String?    @unique
+  chunks              JobChunk[]
 
   @@index([userId])
   @@map("transcription_jobs")
+}
+
+model JobChunk {
+  id          String           @id @default(cuid())
+  job         TranscriptionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId       String
+  chunk_index Int
+  start_time  Float
+  end_time    Float
+  blob_url    String           @db.Text
+  transcript  String?          @db.Text
+  status      String           @default("PENDING")
+
+  @@index([jobId])
+  @@map("job_chunks")
 }
 
 // --- Enums ---

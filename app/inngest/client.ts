@@ -6,6 +6,6 @@ import type {AppEvents} from "./types";
 const schemas = new EventSchemas().fromRecord<AppEvents>();
 
 export const inngest = new Inngest({
-  id: "quickscribe",
+  id: "quickscribe-v2",
   schemas,
 });

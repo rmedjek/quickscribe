@@ -3,7 +3,7 @@
 
 import React from "react";
 import ProgressStepper from "./ProgressStepper";
-import {AppStep, StepId} from "@/types/app";
+import {AppStep, StageDisplayData, StepId} from "@/types/app";
 import QuickScribeLogo from "./icons/QuickScribeLogo";
 
 interface Props {
@@ -24,7 +24,7 @@ export default function ProcessingView({
       <div className="text-center mb-6">
         <h1 className="text-3xl sm:text-4xl font-bold">QuickScribe</h1>
         <p className="text-sm text-[var(--text-secondary)] mt-1">
-          Powered by Groq
+          Powered by AssemblyAI
         </p>
       </div>
       <ProgressStepper steps={appSteps} currentStepId={currentAppStepId} />

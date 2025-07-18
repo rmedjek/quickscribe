@@ -1,20 +1,22 @@
 // app/inngest/types.ts
 
-import {TranscriptionMode} from "@/components/ConfirmationView";
-
+// We no longer need TranscriptionMode here for the submission event
+// import {TranscriptionMode} from "@/components/ConfirmationView";
 export type AppEvents = {
   "media.submitted": {
     data: {
-      userId: string;
-      transcriptionMode: TranscriptionMode;
+      jobId: string;
+      fileUrl: string;
       isLinkJob: boolean;
-      // Use client-side temporary ID for tracking before a DB record exists
-      tempJobId: string;
-      // All other fields are optional and depend on the job type
-      blobUrl?: string;
-      linkUrl?: string;
       originalFileName?: string;
-      fileHash?: string;
+    };
+  };
+
+  // This event will be used by our AssemblyAI webhook handler later.
+  "assemblyai.transcript.ready": {
+    data: {
+      jobId: string;
+      transcript: any; // The full payload from AssemblyAI
     };
   };
 

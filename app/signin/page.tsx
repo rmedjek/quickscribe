@@ -1,13 +1,12 @@
-import PageLayout from "@/components/PageLayout";
+// app/signin/page.tsx
 import SignInCard from "@/components/SignInCard";
-import {Suspense} from "react";
 
 export default function SignInPage() {
+  // This page should be simple, no extra layouts.
+  // The RootLayout will handle providers.
   return (
-    <PageLayout>
-      <Suspense fallback={<div>Loading...</div>}>
-        <SignInCard />
-      </Suspense>
-    </PageLayout>
+    <div className="flex h-full w-full items-center justify-center p-4">
+      <SignInCard />
+    </div>
   );
 }

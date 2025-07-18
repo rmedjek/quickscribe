@@ -1,5 +1,5 @@
 // app/lib/prisma.ts
-import {PrismaClient} from "@prisma/client";
+import {PrismaClient, JobStatus} from "@prisma/client";
 
 const prismaClientSingleton = () => {
   return new PrismaClient();
@@ -18,3 +18,4 @@ export default prisma;
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
+export {JobStatus}; // <-- Re-export the enum

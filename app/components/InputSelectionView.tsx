@@ -151,7 +151,7 @@ const InputSelectionView: React.FC<InputSelectionViewProps> = ({
           QuickScribe
         </h1>
         <p className="text-base dark:text-slate-400 mt-2 text-[var(--text-secondary)]">
-          Powered by Groq
+          Powered by AssemblyAI
         </p>
       </div>
       {/* drag-and-drop  */}

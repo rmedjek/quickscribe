@@ -3,7 +3,6 @@
 
 import React, {useState, useCallback, useEffect} from "react";
 import {useRouter} from "next/navigation";
-import {upload} from "@vercel/blob/client";
 import {submitMediaJob} from "@/actions/jobActions";
 import {calculateFileHash} from "@/lib/hash-utils";
 import {
@@ -12,9 +11,7 @@ import {
   type StageDisplayData,
 } from "@/types/app";
 import InputSelectionView from "@/components/InputSelectionView";
-import ConfirmationView, {
-  TranscriptionMode,
-} from "@/components/ConfirmationView";
+import ConfirmationView from "@/components/ConfirmationView";
 import ProcessingView from "@/components/ProcessingView";
 import {StepperProvider, useStepper} from "../contexts/StepperContext";
 import {usePage} from "../contexts/PageContext";
@@ -63,53 +60,76 @@ function NewTranscriptionContent() {
     setError(null);
   }, [setStep]);
 
-  const onConfirm = async (mode: TranscriptionMode) => {
+  // in NewTranscriptionContent component...
+
+  const onConfirm = async () => {
     setIsSubmitting(true);
     setView(ViewState.Submitting);
     setStep("process");
     setError(null);
-    let result: {success: boolean; tempJobId?: string; error?: string};
 
     try {
+      // We declare 'result' here, but will assign it inside the if/else blocks.
+      let result: {success: boolean; tempJobId?: string; error?: string};
+
       if (file) {
-        setStatusText("Uploading your file...");
+        // --- This is the FILE upload path ---
+        setStatusText("Preparing secure upload...");
         setActiveStage({
           name: "upload",
-          label: "Uploading File",
+          label: "Preparing Upload...",
           progress: 0,
           isActive: true,
         });
 
-        const blob = await upload(file.name, file, {
-          access: "public",
-          handleUploadUrl: "/api/client-upload",
-          onUploadProgress: (p) => {
-            setActiveStage((prev) =>
-              prev ? {...prev, progress: p.percentage / 100} : null
-            );
-          },
+        const presignedUrlResponse = await fetch("/api/presigned-url", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({filename: file.name, contentType: file.type}),
         });
+        if (!presignedUrlResponse.ok) {
+          const errorBody = await presignedUrlResponse.json();
+          throw new Error(`Could not prepare upload: ${errorBody.error}`);
+        }
 
-        setStatusText("Creating your job...");
-        // After upload, switch to an indeterminate state
-        setActiveStage({
-          name: "create",
-          label: "Submitting Job...",
-          progress: 0,
-          isActive: true,
+        // `publicUrl` is correctly scoped and defined here.
+        const {url: presignedUrl, publicUrl} =
+          await presignedUrlResponse.json();
+
+        setStatusText("Uploading your file...");
+        setActiveStage((prev) => ({
+          ...prev!,
+          label: "Uploading File...",
+          progress: 0.1,
           isIndeterminate: true,
+        }));
+
+        const uploadResponse = await fetch(presignedUrl, {
+          method: "PUT",
+          body: file,
+          headers: {"Content-Type": file.type},
         });
+        if (!uploadResponse.ok) throw new Error("File upload failed.");
+
+        setActiveStage((prev) => ({
+          ...prev!,
+          label: "Upload Complete",
+          progress: 1,
+        }));
+        setStatusText("Creating your job...");
 
         const hash = await calculateFileHash(file);
+
+        // The server action is called with the `publicUrl` from this scope.
         result = await submitMediaJob({
           type: "file",
-          blobUrl: blob.url,
+          blobUrl: publicUrl,
           originalFileName: file.name,
           fileHash: hash,
-          transcriptionMode: mode,
+          fileSize: file.size,
         });
       } else if (link) {
-        // For links, we go straight to the indeterminate state
+        // --- This is the LINK submission path ---
         setStatusText("Submitting your link...");
         setActiveStage({
           name: "create",
@@ -118,15 +138,17 @@ function NewTranscriptionContent() {
           isActive: true,
           isIndeterminate: true,
         });
+
+        // The server action is called with the `link` from this scope.
         result = await submitMediaJob({
           type: "link",
           linkUrl: link,
-          transcriptionMode: mode,
         });
       } else {
         throw new Error("No input selected");
       }
 
+      // This final part is now universal and correct.
       if (result.success && result.tempJobId) {
         router.push(`/job/processing/${result.tempJobId}`);
       } else {
@@ -166,7 +188,7 @@ function NewTranscriptionContent() {
           file={file}
           link={link}
           inputType={inputType}
-          onConfirm={(p, m) => onConfirm(m)}
+          onConfirm={onConfirm}
           onCancel={onCancel}
           isSubmitting={isSubmitting}
         />
